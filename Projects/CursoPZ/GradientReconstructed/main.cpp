@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
 				TPZVTKGeoMesh::PrintGMeshVTK(gmesh,arg2);
 				
 				// Solving
-				TPZAnalysis an(cmesh);
+				TPZAnalysis an(cmesh,0);
 				mySolve(an,cmesh);
 				
 				ctime(&endtime);
@@ -208,7 +208,7 @@ void GradReconstructionByLeastSquares(TPZCompEl *cel,TPZFMatrix<REAL> &Grad,int 
 	int nstates = cel->Material()->NSolutionVariables(var);
 	int k, side, nsides = cel->Reference()->NSides()-1;   // Desconsiderando o proprio elemento (lado)
 	
-	TPZManVector<REAL> centerpsi(3,0.0);
+	TPZManVector<REAL> centerpsi(dim,0.0);
 	TPZManVector<REAL,3> center(3,0.0), centerbeta(3,0.0);
 	TPZManVector<STATE> solalfa(nstates,0.0), solbeta(nstates,0.0);
 	TPZFMatrix<REAL> A(dim,dim);    // Linear System matrix
@@ -288,7 +288,7 @@ void GradReconstructionByLeastSquares_Self(TPZCompEl *cel,TPZFMatrix<REAL> &Grad
 	int nstates = cel->Material()->NSolutionVariables(var);
 	int side, nsides = cel->Reference()->NSides()-1;   // Desconsiderando o proprio elemento (lado)
 	
-	TPZManVector<REAL> centerpsi(3,0.0);
+	TPZManVector<REAL> centerpsi(dim,0.0);
 	TPZManVector<REAL,3> center(3,0.0), centerbeta(3,0.0);
 	TPZManVector<STATE> solalfa(nstates,0.0), solbeta(nstates,0.0);
 	TPZFMatrix<REAL> A(dim,dim);    // Linear System matrix
