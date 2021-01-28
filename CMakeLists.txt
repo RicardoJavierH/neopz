@@ -60,7 +60,7 @@ set(NEOPZ_LIB pzlib/lib)
 
 #enabling pthread library
 find_path(PTHREAD_INCLUDE NAMES PThread.h pthread.h PATHS ${SEARCH_DIRS} ${PROJECT_SOURCE_DIR}/../externallibs/pthread ${PROJECT_SOURCE_DIR}/../externallibs/pthread/include ${PROJECT_SOURCE_DIR}/../pthread )
-find_library(PTHREAD_LIB NAMES libpthread.dylib pthread.lib pthreadVC2.lib libPThread.so libPThread.a libpthread.so libpthread.a PATHS ${SEARCH_DIRS} ${PROJECT_SOURCE_DIR}/../externallibs/pthread/lib  ${PROJECT_SOURCE_DIR}/../pthread/lib)
+find_library(PTHREAD_LIB NAMES libpthread.dylib pthread.lib pthreadVC2.lib libpthread.tbd libPThread.so libPThread.a libpthread.so libpthread.a PATHS ${SEARCH_DIRS} ${PROJECT_SOURCE_DIR}/../externallibs/pthread/lib  ${PROJECT_SOURCE_DIR}/../pthread/lib)
 if(PTHREAD_INCLUDE-NOTFOUND)
 	set (PTHREAD_INCLUDE "" CACHE PATH "Directory where pthread.h can be found")
 endif()
