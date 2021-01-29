@@ -612,6 +612,43 @@ void TPZCreateApproximationSpace::SetAllCreateFunctionsSBFem(int dimension){
     }
 }
 
+#include "TPZSBFemVolumeHdiv.h"
+
+void TPZCreateApproximationSpace::SetAllCreateFunctionsSBFemHdiv(int dimension){
+    
+    fStyle = ESBFemHdiv;
+    switch (dimension) {
+        case 1:
+            DebugStop();
+            break;
+        case 2:
+            DebugStop();
+            // fp[EPoint] = CreatePointEl;
+            // fp[EOned] = CreateSBFemHdivOnedEl;
+            // fp[ETriangle] = CreateNoElement;
+            // fp[EQuadrilateral] = CreateSBFemHdivQuadEl;
+            // fp[ETetraedro] = CreateNoElement;
+            // fp[EPiramide] = CreateNoElement;
+            // fp[EPrisma] = CreateNoElement;
+            // fp[ECube] = CreateNoElement;
+            break;
+        case 3:
+            DebugStop();
+            // fp[EPoint] = CreatePointEl;
+            // fp[EOned] = CreateSBFemHdivOnedEl;
+            // fp[ETriangle] = CreateTriangleEl;
+            // fp[EQuadrilateral] = CreateQuadEl;
+            // fp[ETetraedro] = CreateNoElement;
+            // fp[EPiramide] = CreateNoElement;
+            // fp[EPrisma] = CreateSBFemHdivPrismEl;
+            // fp[ECube] = CreateSBFemHdivCubeEl;
+            break;
+        default:
+            DebugStop();
+            break;
+    }
+}
+
 #endif
 
 ////#include "pzhdivfull.h"

@@ -40,7 +40,7 @@ class TPZCreateApproximationSpace : public TPZSavable {
     
 public:
     
-    enum MApproximationStyle {ENone,EContinuous,EDiscontinuous,EHDiv,EHCurl, EMultiphysics, ESBFem, ECustom};
+    enum MApproximationStyle {ENone,EContinuous,EDiscontinuous,EHDiv,EHCurl, EMultiphysics, ESBFem, ESBFemHdiv, ECustom};
 private:
     /// approximation space style last used
     MApproximationStyle fStyle = ENone;
@@ -107,6 +107,8 @@ public:
 #if defined(USING_MKL) && defined(USING_LAPACK) && !defined(STATE_COMPLEX)
     /** @brief Create SBFem approximation space */
     void SetAllCreateFunctionsSBFem(int meshdim);
+    /** @brief Create SBFem-Hdiv approximation space */
+    void SetAllCreateFunctionsSBFemHdiv(int meshdim);
 #endif
 
 #ifndef STATE_COMPLEX

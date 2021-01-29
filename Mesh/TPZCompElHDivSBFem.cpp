@@ -274,3 +274,94 @@ template class TPZRestoreClass< TPZCompElHDivSBFem<TPZShapeQuad>>;
 template class TPZCompElHDivSBFem<TPZShapeTriang>;
 template class TPZCompElHDivSBFem<TPZShapeLinear>;
 template class TPZCompElHDivSBFem<TPZShapeQuad>;
+
+// TPZCompEl * CreateHDivBoundPointEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDivBound2<TPZShapePoint>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivBoundLinearEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDivBound2< TPZShapeLinear>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivBoundQuadEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZCompElHDivBound2< TPZShapeQuad>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivBoundTriangleEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZCompElHDivBound2< TPZShapeTriang >(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivLinearEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZCompElHDiv< TPZShapeLinear>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivQuadEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapeQuad>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivTriangleEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapeTriang >(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivCubeEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapeCube >(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivPrismEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapePrism>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivPyramEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapePiram >(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateHDivTetraEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+// 	return new TPZCompElHDiv< TPZShapeTetra >(mesh,gel,index);
+// }
+
+// #include "pzreferredcompel.h"
+
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapeLinear>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapeTriang>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapeQuad>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapeCube>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapeTetra>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapePrism>>>;
+// template class TPZRestoreClass< TPZReferredCompEl<TPZCompElHDiv<TPZShapePiram>>>;
+
+
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapeLinear>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapeTriang>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapeQuad>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapeTetra>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapePrism>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapePiram>>;
+// template class TPZReferredCompEl<TPZCompElHDiv<TPZShapeCube>>;
+
+// TPZCompEl * CreateRefHDivLinearEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapeLinear>>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivQuadEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapeQuad>>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivTriangleEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapeTriang >>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivCubeEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapeCube >>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivPrismEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapePrism>>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivPyramEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapePiram >>(mesh,gel,index);
+// }
+
+// TPZCompEl * CreateRefHDivTetraEl(TPZGeoEl *gel,TPZCompMesh &mesh,int64_t &index) {
+//     return new TPZReferredCompEl<TPZCompElHDiv< TPZShapeTetra >>(mesh,gel,index);
+// }

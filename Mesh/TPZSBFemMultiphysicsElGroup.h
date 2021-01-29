@@ -34,5 +34,5 @@ public:
         
     }
 
-    void GroupandCondense(TPZMultiphysicsCompMesh * cmesh);
+    // void GroupandCondense(TPZMultiphysicsCompMesh * cmesh);
 };
