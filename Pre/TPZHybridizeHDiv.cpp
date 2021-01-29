@@ -680,7 +680,7 @@ static void CompareFluxes(TPZCompElSide &left, TPZCompElSide &right, std::ostrea
 }
 
 /// verify the consistency of the solution of the flux mesh
-void TPZHybridizeHDiv::VerifySolutionConsistency(TPZCompMesh *fluxmesh, std::ostream &out)
+void TPZHybridizeHDiv::VerifySolutionConsistency(TPZCompMesh *fluxmesh, std::ostream& out)
 {
     int64_t nel = fluxmesh->NElements();
     fluxmesh->Reference()->ResetReference();
