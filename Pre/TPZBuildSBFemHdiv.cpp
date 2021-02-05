@@ -42,11 +42,16 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
     auto cmeshflux = cmeshvec[0];
     auto cmeshpressure = cmeshvec[1];
 
-    // Creating the geometry for the the SBFEM simulation
+    // ********** CREATING THE GEOMETRY
     // Skeleton Elements + Collapsed Elements + External elements:
 
-    // Creating dim-1 elements CompEls
-    int dim = cmeshflux->Dimension();
+    // Before calling this function the Skeleton elements were already created
+    // So I just need to create the collapsed and external elements
+
+    // Creating dim-1 elements CompEls - Skeleton and BCs
+    int dim = cmeshm->Dimension();
+    auto fGMesh = cmeshm->Reference();
+
     set<int> matids;
     for (auto gel : fGMesh->ElementVec())
     {
@@ -60,14 +65,18 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
     }
     cmeshflux->ApproxSpace().SetAllCreateFunctionsHDiv(dim);
     cmeshflux->AutoBuild(matids);
+    cmeshpressure->ApproxSpace().SetAllCreateFunctionsDiscontinuous();
+    cmeshpressure->AutoBuild(matids);
 
-    auto gmeshflux = cmeshflux->Reference();
-    CreateExternalElements(gmeshflux);
+    // Creating volumetric collapsed elements
+    set<int> matidstarget; // matid of the collapsed element (output parameter)
+    // The updated mesh will be fGMesh
+    // cmeshpressure will be used as the basis to construct the collapsed geoels, once the BCs are there
+    CreateCollapsedGeoEls(*cmeshpressure, matidstarget);
+    cmeshm->SetReference(fGMesh);
 
-    // Creating volumetric and external elements
-    CreateVolumetricElementsHdiv(*cmeshflux); // Here it's created the SBFemVolumeHdiv elements
-
-    fGMesh = gmeshflux;
+    // Creating dim-1 elements: External flux and external pressure.
+    CreateExternalElements(fGMesh, matidstarget);
 
 #ifdef PZDEBUG
     ofstream outvtk("GeometrySBFEM.vtk");
@@ -77,157 +86,89 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
     cmeshflux->Reference()->Print(gout);
 #endif
 
-    // Create discontinuous comp elements for the external pressures
-    CreateSBFemDiscontinuousElements(*cmeshpressure);
+    // ********** CREATING THE COMPUTATIONAL MESH
+    // At this point the code created all geometric elements needed for ther SBFEM simulation and it's stored in fGMesh
+    // Here it's created the SBFemVolumeHdiv elements -> CompElHdivElement -> Adjust connectivities
+    // But firstly the atomic meshes must be properly created
+    CreateCompElPressure(*cmeshpressure);
+    CreateCompElFlux(*cmeshflux, matidstarget);
 
-#ifdef PZDEBUG
-    ofstream fout("cmeshflux.txt");
-    cmeshflux->Print(fout);
-    ofstream pout("cmeshpressure.txt");
-    cmeshpressure->Print(pout);
-#endif
-
-    UpdateMultiphysicsMesh(cmeshvec, *cmeshm);
-
-    CreateSBFemMultiphysicsElGroups(*cmeshm);
-
-#ifdef PZDEBUG
-    ofstream mout("cmeshmultiphysics.txt");
-    cmeshm->Print(mout);
-#endif
-
-    // Creating Element Groups
-    CreateSBFemInterfaceElementGroups(*cmeshm);
-
-    // Ajusting the connectivity of these elements
-    // AdjustExternalPressureConnectivity();
-
-    // Group and Condense
-    // GroupandCondense();
-}
-
-void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh)
-{
-    for (auto gel : gmesh->ElementVec())
-    {
-        if (!gel)
-        {
-            continue;
-        }
-        if (gel->MaterialId() != fSkeletonMatId)
-        {
-            continue;
-        }
-        auto iside = -1;
-        switch (gel->Type())
-        {
-        case EOned:
-            iside = 3;
-            break;
-        case ETriangle:
-            iside = 6;
-            break;
-        case EQuadrilateral:
-            iside = 8;
-        default:
-            break;
-        }
-        TPZGeoElBC(gel, iside, fLeftpressureMatId);
-        TPZGeoElBC(gel, iside, fRightpressureMatId);
-        TPZGeoElBC(gel, iside, fLeftfluxMatId);
-        TPZGeoElBC(gel, iside, fRightfluxMatId);
-    }
-}
-
-void TPZBuildSBFemHdiv::CreateSBFemDiscontinuousElements(TPZCompMesh &cmeshpressure)
-{
-    auto dim = cmeshpressure.Dimension()-1;
-    auto nstate = cmeshpressure.MaterialVec().begin()->second->NStateVariables();
-
-    auto matleft = new TPZNullMaterial(fLeftpressureMatId, dim, nstate);
-    cmeshpressure.InsertMaterialObject(matleft);
-
-    auto matright = new TPZNullMaterial(fRightpressureMatId, dim, nstate);
-    cmeshpressure.InsertMaterialObject(matright);
-
-    set<int> matids = {fLeftpressureMatId, fRightpressureMatId};
-    cmeshpressure.SetAllCreateFunctionsContinuous();
-    cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
-    cmeshpressure.AutoBuild(matids);
-
-    for(auto newnod : cmeshpressure.ConnectVec())
-    {
-        newnod.SetLagrangeMultiplier(1);
-    }
-}
-
-void TPZBuildSBFemHdiv::UpdateMultiphysicsMesh(TPZManVector<TPZCompMesh*, 2> & cmeshvec, TPZMultiphysicsCompMesh & cmeshm)
-{
-    auto dim = fGMesh->Dimension();
-    auto nstate = cmeshm.MaterialVec().begin()->second->NStateVariables();
-    cmeshm.ApproxSpace().SetAllCreateFunctionsMultiphysicElem();
-
-    set<int> matids = {fLeftfluxMatId, fRightpressureMatId, fLeftpressureMatId, fRightpressureMatId};
-    for(auto mId : matids)
-    {
-        auto mat = new TPZNullMaterial(mId,dim,nstate);
-        cmeshm.InsertMaterialObject(mat);
-    }
-    {
-        auto mat = new TPZLagrangeMultiplier(fInterfaceMatId, dim, nstate);
-        cmeshm.InsertMaterialObject(mat);
-    }
-
+    // Then, creating the multiphysics mesh
+    CreateSBFEMMultiphysicsMesh(*cmeshm);
     TPZManVector<int> active(2,1);
-    cmeshm.BuildMultiphysicsSpace(active, cmeshvec);
-    cmeshm.LoadReferences();
-    cmeshm.CleanUpUnconnectedNodes();
+    cmeshm->BuildMultiphysicsSpace(active, cmeshvec);
+    cmeshm->LoadReferences();
+    cmeshm->CleanUpUnconnectedNodes();
+
+    AddInterfaceElements(*cmeshm);
+
+    CreateSBFEMMultiphysicsVol(*cmeshm, matidstarget);
+
+//     // Based on the multiphysics mesh, create SBFemElementGroups
+//     // The SBFemMultiphysicsElGroups = Group of collapsed flux elements (SBFemVolumes) + pressure compels
+//     // Then, condense the flux into the pressures.
+//     // CreateSBFemFluxElGroups(*cmeshm);
+//     // CreateSBFemPressureElGroups(*cmeshm);
+
+//     // Ajusting the connectivity of these elements
+//     // AdjustExternalPressureConnectivity(*cmeshm);
+
+// #ifdef PZDEBUG
+//     ofstream mout("cmeshmultiphysics.txt");
+//     cmeshm->Print(mout);
+// #endif
 }
 
-void TPZBuildSBFemHdiv::CreateVolumetricElementsHdiv(TPZCompMesh &cmesh)
+// GEOMETRY FUNCTIONS
+void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget)
 {
-    TPZGeoMesh *gmesh = cmesh.Reference();
-
-    // all computational elements have been loaded
-    set<int> matids, matidstarget;
+    // all computational elements for internal DOFs have been loaded for flux and pressure meshes
+    set<int> matids;
     for (auto it = fMatIdTranslation.begin(); it!= fMatIdTranslation.end(); it++)
     {
         int64_t mat = it->second;
-        if (cmesh.FindMaterial(mat))
+        if (cmeshpressure.FindMaterial(mat))
         {
             matids.insert(it->first);
             matidstarget.insert(it->second);
         }
     }
 
-    // Creating geometric collapsed elements
-    auto dim = gmesh->Dimension();
-    for (auto gel : gmesh->ElementVec())
+    // fGMesh = gmesh for the multiphysics mesh
+    // gmeshflux = gmesh for the flux mesh (it doesn't have external geoels yet).
+
+    // Creating geometric collapsed elements for the multiphysics mesh based on the flux mesh
+    auto dim = fGMesh->Dimension();
+    auto gmeshpressure = cmeshpressure.Reference();
+
+    for (auto gelpressure : gmeshpressure->ElementVec())
     {
-        if (!gel || gel->HasSubElement() || gel->Reference())
+        if (!gelpressure || gelpressure->HasSubElement() || gelpressure->Reference())
         {
             continue;
         }
         // we create SBFemVolume elements by partitioning the volume elements
-        auto el = gel->Index();
-        if (gel->Dimension() != dim || fElementPartition[el] == -1)
+        auto el = gelpressure->Index();
+        if (gelpressure->Dimension() != dim || fElementPartition[el] == -1)
         {
             continue;
         }
-        if (matids.find(gel->MaterialId()) == matids.end())
+        // I am searching elements with dim dimension and with FE matids
+        // to transform it in collapsed elements with matidtargets
+        if (matids.find(gelpressure->MaterialId()) == matids.end())
         {
             continue;
         }
-        int nsides = gel->NSides();
+        int nsides = gelpressure->NSides();
         for (int is = 0; is<nsides; is++)
         {
-            if (gel->SideDimension(is) != dim-1)
+            if (gelpressure->SideDimension(is) != dim-1)
             {
                 continue;
             }
             TPZStack<TPZCompElSide> celstack;
-            TPZGeoElSide gelside(gel,is);
-            bool onlyinterpolated = false; // TEST HERE!! - I guess it should be false because I am using Hdiv approx space
+            TPZGeoElSide gelside(gelpressure,is);
+            bool onlyinterpolated = true;
             bool removeduplicates = true;
             // we identify all computational elements connected to this geometric element side
             gelside.EqualorHigherCompElementList2(celstack, onlyinterpolated, removeduplicates);
@@ -253,20 +194,22 @@ void TPZBuildSBFemHdiv::CreateVolumetricElementsHdiv(TPZCompMesh &cmesh)
                 {
                     Nodes[in] = fPartitionCenterNode[elpartition]; // Scaling center nodes
                 }
-                auto matid = fMatIdTranslation[gel->MaterialId()];
+                auto matid = fMatIdTranslation[gelpressure->MaterialId()];
+
+                // Then, the collapsed volumetric elements will be created in the multiphysics gmesh
                 if (subgelside.IsLinearMapping())
                 {
                     switch(nnodes)
                     {
                         case 2:
-                            gmesh->CreateGeoElement(EQuadrilateral, Nodes, matid, index);
+                            fGMesh->CreateGeoElement(EQuadrilateral, Nodes, matid, index);
                             break;
                         case 4:
-                            gmesh->CreateGeoElement(ECube, Nodes, matid, index);
+                            fGMesh->CreateGeoElement(ECube, Nodes, matid, index);
                             DebugStop();
                             break;
                         case 3:
-                            gmesh->CreateGeoElement(EPrisma, Nodes, matid, index);
+                            fGMesh->CreateGeoElement(EPrisma, Nodes, matid, index);
                             DebugStop();
                             break;
                         default:
@@ -277,17 +220,17 @@ void TPZBuildSBFemHdiv::CreateVolumetricElementsHdiv(TPZCompMesh &cmesh)
                 }
                 else
                 {
-                    int64_t elementid = gmesh->NElements()+1;
+                    int64_t elementid = fGMesh->NElements()+1;
                     switch(nnodes)
                     {
                         case 2:
-                            new TPZGeoElRefPattern< pzgeom::TPZGeoBlend<pzgeom::TPZGeoQuad> > (Nodes, matid, *gmesh,index);
+                            new TPZGeoElRefPattern< pzgeom::TPZGeoBlend<pzgeom::TPZGeoQuad> > (Nodes, matid, *fGMesh,index);
                             break;
                         case 4:
-                            new TPZGeoElRefPattern< pzgeom::TPZGeoBlend<pzgeom::TPZGeoCube> > (Nodes, matid, *gmesh,index);
+                            new TPZGeoElRefPattern< pzgeom::TPZGeoBlend<pzgeom::TPZGeoCube> > (Nodes, matid, *fGMesh,index);
                             break;
                         case 3:
-                            gmesh->CreateGeoElement(EPrisma, Nodes, matid, index);
+                            fGMesh->CreateGeoElement(EPrisma, Nodes, matid, index);
                             break;
                         default:
                             std::cout << "Don't understand the number of nodes per side : nnodes " << nnodes << std::endl;
@@ -302,336 +245,339 @@ void TPZBuildSBFemHdiv::CreateVolumetricElementsHdiv(TPZCompMesh &cmesh)
             }
         }
     }
-    gmesh->BuildConnectivity();
+    fGMesh->BuildConnectivity();
 
 #ifdef PZDEBUG
     {
         ofstream gout("gmeshwithvol.txt");
-        gmesh->Print(gout);
-        ofstream cout("cmeshhdiv.txt");
-        cmesh.Print(cout);
-    }
-#endif
-
-    // Creating SBFemVolumeHdiv elements
-    gmesh->ResetReference();
-    CreateSBFemVolumeHdiv(cmesh, matidstarget);
-    cmesh.ExpandSolution();
-
-    AdjustFluxConnectivities(cmesh);
-
-#ifdef PZDEBUG
-    {
-        ofstream cout("cmeshhdiv.txt");
-        cmesh.Print(cout);
+        fGMesh->Print(gout);
     }
 #endif
 }
 
-
-void TPZBuildSBFemHdiv::CreateSBFemVolumeHdiv(TPZCompMesh & cmesh, set<int> & matidstarget)
+void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget)
 {
-    auto gmesh = cmesh.Reference();
-    auto dim = gmesh->Dimension();
-    auto porder = cmesh.GetDefaultOrder();
-
     for (auto gel : gmesh->ElementVec())
     {
-        if (!gel || gel->Dimension() != gmesh->Dimension())
+        if (!gel)
         {
             continue;
         }
-        auto it = matidstarget.find(gel->MaterialId());
-        if (it == matidstarget.end())
+        // matidtarget contains the material id of the collapsed elements
+        auto it = matidtarget.find(gel->MaterialId());
+        if (it == matidtarget.end())
         {
             continue;
         }
-        // Get Side of the volumetric element with the dim-1 element
-        auto nnodes = gel->NNodes();
-        auto iside = -1;
-        switch (nnodes)
-        {
-        case 4:
-            iside = 4;
-            break;
-        case 6:
-            DebugStop();
-            break;
-        case 8:
-            DebugStop();
-            break;
-        default:
-            DebugStop();
-            break;
-        }
-        
-        int64_t index;
-        TPZGeoElSide gelside(gel,iside);
-        auto neigh  = gelside.Neighbour();
-        while (neigh != gelside)
-        {
-            auto gelneigh = neigh.Element();
-            auto matid = gelneigh->MaterialId();
-            if (gelneigh->Dimension() == dim-1 && matid != fLeftfluxMatId && matid != fRightfluxMatId)
-            {
-                break;
-            }
-            neigh = neigh.Neighbour();
-        }
-        if (neigh == gelside)
-        {
-            DebugStop();
-        }
-        auto gel1d = neigh.Element();
 
-        auto celhdivc = CreateSBFemHdivCompEl(cmesh, gel, gel1d, index);
-        fGeltocel[gel1d->Index()] = celhdivc;
+        // getting the side in which the 1d elements will be constructed as neighbours
+        auto iside = GetSideCollapsedEl(gel);
+        
+        TPZGeoElBC(gel, iside, fDifpressure); // "External" pressure - physically the derivative of the pressure
+        TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
+        TPZGeoElBC(gel, iside, fExternalleftflux); // HdivBound
+        TPZGeoElBC(gel, iside, fInternal); // Hdiv + Internal pressure
+        TPZGeoElBC(gel, iside, fExternalrightflux); // HdivBound
+        TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
+        // fSkeleton will be the external pressures
     }
 }
 
-
-
-void TPZBuildSBFemHdiv::CreateSBFemMultiphysicsElGroups(TPZMultiphysicsCompMesh & cmesh)
+// COMPUTATIONAL ELEMENT FUNCTIONS
+void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
 {
-    auto numgroups = fPartitionCenterNode.size();
-    auto groupelementindices(numgroups);
-    
-    TPZManVector<int64_t> elementgroupindices(numgroups); 
-    
-    for (int64_t el=0; el<numgroups; el++)
-    {
-        int64_t index;
-        new TPZSBFemMultiphysicsElGroup(cmesh,index);
-        elementgroupindices[el] = index;
-    }
-    
-    auto dim = cmesh.Dimension();
-    for (auto cel : cmesh.ElementVec())
-    {
-        if (!cel || !(cel->Reference()) )
-        {
-            continue;
-        }
-        auto gel = cel->Reference();
-        auto sbfem = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
-        auto side = -1;
-        switch (gel->Type())
-        {
-        case EQuadrilateral:
-            side = 4;
-            break;
-        case EPrisma:
-            side = 15;
-            break;
-        case ECube:
-            side = 20;
-            break;
-        default:
-            break;
-        }
-        if (sbfem)
-        {
-            auto gel = sbfem->Reference();
-            auto gelindex = gel->Index();
+    auto dim = cmeshpressure.Dimension()-1; // materials with dim-1 dimensional elements
+    auto nstate = cmeshpressure.MaterialVec().begin()->second->NStateVariables();
 
-            TPZGeoElSide gelside(gel,side);
-            auto geldim = gel->Dimension();
-            auto nsidenodes = gel->NSideNodes(side);
+    auto matleft = new TPZNullMaterial(fInternal, dim, nstate);
+    cmeshpressure.InsertMaterialObject(matleft);
 
-            TPZManVector<int64_t,8> cornernodes(nsidenodes);
-            for (int node = 0; node<nsidenodes; node++)
-            {
-                cornernodes[node] = gel->SideNodeIndex(side, node);
-            }
-            
-            TPZGeoElSide neighbour = gelside.Neighbour();
-            while (neighbour != gelside)
-            {
-                if(neighbour.Element()->Dimension() == geldim-1 && neighbour.Element()->Reference())
-                {
-                    int nsidenodesneighbour = neighbour.Element()->NCornerNodes();
-                    if (nsidenodesneighbour == nsidenodes)
-                    {
-                        TPZManVector<int64_t,8> neighnodes(nsidenodesneighbour);
-                        for (int i=0; i<nsidenodesneighbour; i++)
-                        {
-                            neighnodes[i] = neighbour.Element()->NodeIndex(i);
-                        }
-                        int numequal = 0;
-                        for (int i=0; i<nsidenodesneighbour; i++)
-                        {
-                            if (neighnodes[i] == cornernodes[i]) {
-                                numequal++;
-                            }
-                        }
-                        if (numequal == nsidenodesneighbour)
-                        {
-                            break;
-                        }
-                    }
-                }
-                neighbour = neighbour.Neighbour();
-            }
-            if (neighbour == gelside)
-            {
-                // we are not handling open sides (yet)
-                DebugStop();
-            }
-            int64_t skelindex = neighbour.Element()->Reference()->Index();
-            sbfem->SetSkeleton(skelindex);
-            
-            int64_t gelgroup = fElementPartition[gelindex];
-            if (gelgroup == -1)
-            {
-                DebugStop();
-            }
-            int64_t celgroupindex = elementgroupindices[gelgroup];
-            TPZCompEl *celgr = cmesh.Element(celgroupindex);
-            TPZSBFemMultiphysicsElGroup *sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup *>(celgr);
-            if (!sbfemgr)
-            {
-                DebugStop();
-            }
-            sbfemgr->AddElement(sbfem);
-            sbfem->SetElementGroupIndex(celgroupindex);
-        }
+    auto matright = new TPZNullMaterial(fDifpressure, dim, nstate);
+    cmeshpressure.InsertMaterialObject(matright);
+
+    set<int> matids = {fInternal, fDifpressure};
+    cmeshpressure.SetAllCreateFunctionsContinuous();
+    cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
+    cmeshpressure.AutoBuild(matids);
+
+    for(auto newnod : cmeshpressure.ConnectVec())
+    {
+        newnod.SetLagrangeMultiplier(1);
     }
-    
-    // for (int64_t el=0; el<numgroups; el++) {
-    //     int64_t index;
-        
-    //     index = elementgroupindices[el];
-    //     TPZCompEl *cel = cmesh.Element(index);
-    //     TPZSBFemElementGroup *sbfemgroup = dynamic_cast<TPZSBFemElementGroup *>(cel);
-    //     if (!sbfemgroup) {
-    //         DebugStop();
-    //     }
-    //     const TPZVec<TPZCompEl *> &subgr = sbfemgroup->GetElGroup();
-    //     int64_t nsub = subgr.NElements();
-    //     for (int64_t is=0; is<nsub; is++) {
-    //         TPZCompEl *cel = subgr[is];
-    //         TPZSBFemVolume *femvol = dynamic_cast<TPZSBFemVolume *>(cel);
-    //         if (!femvol) {
-    //             DebugStop();
-    //         }
-    //         femvol->SetElementGroupIndex(index);
-    //     }
-    // }
 }
 
-// NOT READY YET
-
-void TPZBuildSBFemHdiv::AdjustFluxConnectivities(TPZCompMesh & cmesh)
+void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget)
 {
-    auto gmesh = cmesh.Reference();
-    gmesh->ResetReference();
+    auto dim = cmeshflux.Dimension()-1; // materials with dim-1 dimensional elements
+    auto nstate = cmeshflux.MaterialVec().begin()->second->NStateVariables();
 
-    for (auto gel : gmesh->ElementVec())
+    cmeshflux.SetReference(fGMesh);
+
+    auto mat = new TPZNullMaterial(fInternal, dim, nstate);
+    cmeshflux.InsertMaterialObject(mat);
+    
+    auto matboundleft = new TPZNullMaterial(fExternalleftflux, dim, nstate);
+    cmeshflux.InsertMaterialObject(matboundleft);
+    
+    auto matboundright = new TPZNullMaterial(fExternalrightflux, dim, nstate);
+    cmeshflux.InsertMaterialObject(matboundright);
+
+    map<int64_t,TPZCompEl *> geltocel;
+    for (auto gel1d : fGMesh->ElementVec())
+    {
+        if (!gel1d) continue;
+        if (gel1d->MaterialId() != fInternal) continue;
+        int64_t index;
+        auto side = GetSideSkeletonEl(gel1d);
+        TPZGeoElSide gelside(gel1d, side);
+        auto gelcollapsedside = gelside.HasNeighbour(matidtarget); // TEST IT
+        if (!gelcollapsedside)
+        {
+            DebugStop();
+        }
+        auto celhdivc = new TPZCompElHDivSBFem<pzshape::TPZShapeLinear>(cmeshflux, gel1d, gelcollapsedside, index);
+        geltocel[gel1d->Index()] = celhdivc;
+    }
+    cmeshflux.ExpandSolution();
+    cmeshflux.Reference()->ResetReference();
+    
+    // Now setting the geoelement for the HdivBound
+    for (auto gel : fGMesh->ElementVec())
     {
         if (!gel) continue;
-        if (gel->MaterialId() != fLeftfluxMatId) continue;
+        if (gel->MaterialId() != fExternalleftflux) continue;
 
-        auto nnodes1d = gel->NNodes();
-        auto iside = -1;
-        switch (nnodes1d)
-        {
-        case 2:
-            iside = 2;
-            break;
-        
-        default:
-            break;
-        }
-
-        TPZGeoElSide gelside(gel,iside);
-        auto intfluxside = gelside.HasNeighbour(fSkeletonMatId);
-        if (!intfluxside)
-        {
-            continue;
-        }
-        auto cel = fGeltocel[intfluxside.Element()->Index()];
-        auto celhdivc = dynamic_cast<TPZCompElHDivSBFem<pzshape::TPZShapeLinear> * >(cel);
+        TPZGeoElSide gelside(gel,2);
+        auto intfluxside = gelside.Neighbour();
+        auto cel  = geltocel[intfluxside.Element()->Index()];
+        TPZCompElHDivSBFem<pzshape::TPZShapeLinear> * celhdivc = dynamic_cast<TPZCompElHDivSBFem<pzshape::TPZShapeLinear> * >(cel);
         if (!celhdivc)
         {
             DebugStop();
         }
 
         int64_t index;
-        auto hdivboundleft = new TPZCompElHDivBound2<pzshape::TPZShapeLinear>(cmesh,gel,index);
+        auto hdivboundleft = new TPZCompElHDivBound2<pzshape::TPZShapeLinear>(cmeshflux,gel,index);
         hdivboundleft->SetConnectIndex(0,celhdivc->ConnectIndex(3));
         gel->ResetReference();
 
-        auto rightfluxside = gelside.HasNeighbour(fRightfluxMatId);
+        auto rightfluxside = gelside.Neighbour();
         auto gel1dright = rightfluxside.Element();
-        auto hdivboundright = new TPZCompElHDivBound2<pzshape::TPZShapeLinear>(cmesh,gel1dright,index);
+        auto hdivboundright = new TPZCompElHDivBound2<pzshape::TPZShapeLinear>(cmeshflux,gel1dright,index);
         hdivboundright->SetConnectIndex(0,celhdivc->ConnectIndex(4));
         gel1dright->ResetReference();
     }
     
-    cmesh.LoadReferences();
-    cmesh.Reference()->ResetReference();
-    cmesh.CleanUpUnconnectedNodes();
-    cmesh.ExpandSolution();
+    cmeshflux.LoadReferences();
+    cmeshflux.Reference()->ResetReference();
+    cmeshflux.CleanUpUnconnectedNodes();
+    cmeshflux.ExpandSolution();
 }
 
-void TPZBuildSBFemHdiv::CreateSBFemInterfaceElementGroups(TPZCompMesh & cmeshm)
+void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cmeshm)
 {
-    auto gmesh = cmeshm.Reference();
-    for (auto gel : gmesh->ElementVec())
-    {
-        if (!gel || gel->MaterialId() != fLeftfluxMatId)
-        {
-            continue;
-        }
-        auto nsides = gel->NSides();
-        TPZGeoElSide gelside(gel,nsides-1);
-        auto gelsidepr = gelside.HasNeighbour(fLeftpressureMatId);
-        if (!gelsidepr)
-        {
-            DebugStop();
-        }
+    auto dim = cmeshm.Dimension();
+    auto nstate = cmeshm.MaterialVec().begin()->second->NStateVariables();
 
-        TPZCompElSide celside = gelside.Reference();
-        TPZCompElSide celneigh = gelsidepr.Reference();
-        if (!celside || !celneigh) {
-            DebugStop();
-        }
-        TPZGeoElBC gelbc(gelside, fInterfaceMatId);
-        int64_t index;
-        TPZMultiphysicsInterfaceElement *intf = new TPZMultiphysicsInterfaceElement(cmeshm,gelbc.CreatedElement(),index,celneigh,celside);
+    for (auto matid : fCondensedMatids)    
+    {
+        auto mat = new TPZNullMaterial(matid, dim, nstate);
+        cmeshm.InsertMaterialObject(mat);
     }
-
-    for (auto gel : gmesh->ElementVec())
     {
-        if (!gel || gel->MaterialId() != fRightfluxMatId)
-        {
-            continue;
-        }
-        auto nsides = gel->NSides();
-        TPZGeoElSide gelside(gel,nsides-1);
-        auto gelsidepr = gelside.HasNeighbour(fRightpressureMatId);
-        if (!gelsidepr)
-        {
-            DebugStop();
-        }
-
-        TPZCompElSide celside = gelside.Reference();
-        TPZCompElSide celneigh = gelsidepr.Reference();
-        if (!celside || !celneigh) {
-            DebugStop();
-        }
-        TPZGeoElBC gelbc(gelside, fInterfaceMatId);
-        int64_t index;
-        TPZMultiphysicsInterfaceElement *intf = new TPZMultiphysicsInterfaceElement(cmeshm,gelbc.CreatedElement(),index,celneigh,celside);
+        auto mat = new TPZLagrangeMultiplier(fInterface, dim, nstate);
+        cmeshm.InsertMaterialObject(mat);
     }
 }
+
+void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm)
+{
+    for (auto gel : fGMesh->ElementVec())
+    {
+        if (!gel || gel->MaterialId() != fDifpressure)
+        {
+            continue;
+        }
+
+        auto nsides = gel->NSides();
+        TPZGeoElSide gelsidedpr(gel,nsides-1); // gelside for the differential of the pressure
+        auto gelsideint = gelsidedpr.Neighbour(); // the neighbour must be the interface
+        if (!gelsideint || gelsideint.Element()->MaterialId() != fInterface) //
+        {
+            DebugStop();
+        }
+        auto gelsidefll = gelsideint.Neighbour(); // the neighbour of the interface must be the left flux
+        if (!gelsidefll || gelsidefll.Element()->MaterialId() != fExternalleftflux)
+        {
+            DebugStop();
+        }
+        TPZCompElSide celsidedpr = gelsidedpr.Reference();
+        TPZCompElSide celsidefll = gelsidefll.Reference();
+        if (!celsidedpr || !celsidefll) {
+            DebugStop();
+        }
+        int64_t index;
+        TPZMultiphysicsInterfaceElement *intfl = new TPZMultiphysicsInterfaceElement(cmeshm, gelsideint.Element(),index,celsidefll,celsidedpr);
+
+
+        auto gelsideinternal = gelsidefll.Neighbour(); // Next neighbour will be internal
+        auto gelsideflr = gelsideinternal.Neighbour(); // Next neighbour will be flux right
+        if (!gelsideflr || gelsideflr.Element()->MaterialId() != fExternalrightflux)
+        {
+            DebugStop();
+        }
+        gelsideint = gelsideflr.Neighbour(); // the neighbour of the right flux must be the interface again
+        if (!gelsideint || gelsideint.Element()->MaterialId() != fInterface) //
+        {
+            DebugStop();
+        }
+        auto gelsidepr = gelsideint.Neighbour(); // Next neighbour will be the external pressure
+        if (!gelsidepr || gelsidepr.Element()->MaterialId() != fSkeletonMatId)
+        {
+            DebugStop();
+        }
+        TPZCompElSide celsidepr = gelsidepr.Reference();
+        TPZCompElSide celsideflr = gelsideflr.Reference();
+        if (!celsidepr || !celsideflr) {
+            DebugStop();
+        }
+        TPZMultiphysicsInterfaceElement *intfr = new TPZMultiphysicsInterfaceElement(cmeshm, gelsideint.Element(),index,celsideflr,celsidepr);
+
+        
+    }
+}
+
+void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget)
+{
+    for (auto cel : cmeshm.ElementVec())
+    {
+        // I am searching for a multiphysics element in which the geometric element is a collapsed element
+        if (!cel)
+        {
+            continue;
+        }
+        auto celmult = dynamic_cast<TPZMultiphysicsElement *>(cel);
+        if (!celmult || !(celmult->Reference()))
+        {
+            continue;
+        }
+        auto gel = celmult->Reference();
+        auto it = matidtarget.find(gel->MaterialId());
+        if (it == matidtarget.end())
+        {
+            continue;
+        }
+        TPZSBFemVolumeHdiv sbfem(cmeshm, gel, celmult);
+    }
+    // now adjust the computational multiphysics mesh to not see the reference to other element types and meshes, 
+    // but use only TPZSBFemVolumeHdiv.
+}
+
+// void TPZBuildSBFemHdiv::AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm)
+// {
+//     for (auto cel : cmeshm.ElementVec())
+//     {
+//         if (!cel)
+//         {
+//             DebugStop();
+//         }
+//         auto celgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
+//         if (!celgr)
+//         {
+//             DebugStop();
+//         }
+        
+//         // auto newid = -1;
+//         // auto nsides = 4;
+//         // auto dim = cel->Reference()->Dimension();
+
+//         // TPZStack<int64_t> internalprcon;
+
+//         // auto ncon = cel->NConnects() - nsides * dim;
+//         // perm.resize(ncon);
+
+//         // for (auto con : cmeshm->ConnectVec())
+//         // {
+//         //     if (con.SequenceNumber() == -1)
+//         //     {
+//         //         continue;
+//         //     }
+//         //     perm[con.SequenceNumber()] = con.SequenceNumber();
+//         // }
+
+//         // int64_t nf = cmeshf->NConnects() - 2*nsides;
+//         // auto id = nf+3*nsides;
+
+//         // for (int is = 0; is < nsides; is++)
+//         // {
+//         //     for (int ic = 0; ic < 3; ic++)
+//         //     {
+//         //         auto pos = nf + 3*nsides + is*6 + ic;
+//         //         perm[pos] = id;
+//         //         id++;
+//         //     }
+//         // }
+//         // for (int is = 0; is < nsides; is++)
+//         // {
+//         //     for (int ic = 0; ic < 3; ic++)
+//         //     {
+//         //         auto pos = nf + 3*nsides + is*6 + ic + 3;
+//         //         perm[pos] = id;
+//         //         id++;
+//         //     }
+//         // }
+//     }
+// }
 
 void TPZBuildSBFemHdiv::GroupandCondense()
 {
     DebugStop();
 }
 
+
 void TPZBuildSBFemHdiv::BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh)
 {
     DebugStop();
+}
+
+
+// ******** UTILITY FUNCTIONS
+
+int TPZBuildSBFemHdiv::GetSideSkeletonEl(TPZGeoEl * gel)
+{
+    auto side = -1;
+    switch (gel->Type())
+    {
+    case EOned:
+        side = 3;
+        break;
+    case ETriangle:
+        side = 6;
+        break;
+    case EQuadrilateral:
+        side = 8;
+    default:
+        break;
+    }
+    return side;
+}
+
+int TPZBuildSBFemHdiv::GetSideCollapsedEl(TPZGeoEl * gel)
+{
+    auto side = -1;
+    switch (gel->Type())
+    {
+    case EQuadrilateral:
+        side = 4;
+        break;
+    case EPrisma:
+        side = 15;
+        break;
+    case ECube:
+        side = 20;
+        break;
+    default:
+        break;
+    }
+    return side;
 }

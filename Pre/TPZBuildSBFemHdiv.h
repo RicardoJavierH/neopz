@@ -15,50 +15,46 @@ using namespace std;
 
 class TPZBuildSBFemHdiv : public TPZBuildSBFem
 {
-    //Order of MatIds: fLeftpressure, fRightpressure, fLeftflux, fRightflux;
-    // TPZManVector<int, 4> fMatIdsHdiv;
-    int fLeftfluxMatId, fRightfluxMatId;
+    int fDifpressure, fInterface, fExternalleftflux, fInternal, fExternalrightflux;
 
-    int fLeftpressureMatId, fRightpressureMatId;
-
-    int fInterfaceMatId;
+    set<int> fCondensedMatids = {fDifpressure, fExternalleftflux, fInternal, fExternalrightflux};
 
     map<int64_t,TPZCompEl *> fGeltocel;
+
+    TPZManVector<int64_t> fElGroupIndexes;
     
 public:
     
     /// simple constructor
     TPZBuildSBFemHdiv(TPZAutoPointer<TPZGeoMesh> &gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
-        fLeftpressureMatId = skeletonmatid+1;
-        fRightpressureMatId = fLeftpressureMatId+1;
-        fLeftfluxMatId = fRightpressureMatId+1;
-        fRightfluxMatId = fLeftfluxMatId+1;
-        fInterfaceMatId = fRightfluxMatId+1;
     }
+
+    int GetSideSkeletonEl(TPZGeoEl * gel);
+
+    int GetSideCollapsedEl(TPZGeoEl * gel);
 
     void BuildMultiphysicsCompMesh(TPZCompMesh &cmesh);
 
-    void CreateExternalElements(TPZGeoMesh * gmesh);
+    void CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget);
 
-    void CreateVolumetricElementsHdiv(TPZCompMesh &cmesh);
+    void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget);
 
-    void CreateSBFemVolumeHdiv(TPZCompMesh & cmesh, set<int> & matidstarget);
+    void CreateCompElPressure(TPZCompMesh & cmeshpressure);
 
-    void CreateSBFemDiscontinuousElements(TPZCompMesh &cmeshpressure);
+    void CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget);
 
-    void UpdateMultiphysicsMesh(TPZManVector<TPZCompMesh*, 2> & cmeshvec, TPZMultiphysicsCompMesh & cmeshm);
+    void CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cmeshm);
 
-    void CreateSBFemMultiphysicsElGroups(TPZMultiphysicsCompMesh & cmeshm);
+    void AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm);
+    
+    void CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget);
+
+// ONGOING
+    // void AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm);
 
 // NOT READY YET
     void BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh);
-
-    void AdjustFluxConnectivities(TPZCompMesh & cmesh);
-
-    void AdjustExternalPressureConnectivity(TPZCompMesh & cmesh);
-
-    void CreateSBFemInterfaceElementGroups(TPZCompMesh & cmeshm);
 
     void GroupandCondense();
 };

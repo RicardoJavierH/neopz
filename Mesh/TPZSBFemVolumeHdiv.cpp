@@ -20,38 +20,57 @@
 static LoggerPtr logger(Logger::getLogger("pz.mesh.sbfemvolume"));
 #endif
 
-TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZCompMesh &mesh, TPZGeoEl * gel, TPZGeoEl * gel1d, int64_t &index)
+TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, TPZMultiphysicsElement * cel)
 {
-    switch (gel1d->Type())
-    {
-    case EOned:
-    {
-        auto iside = 4;
-        TPZGeoElSide gelside(gel,iside);
-        new TPZCompElHDivSBFem<TPZShapeLinear>(mesh, gel1d, gelside, index);
-    }
-        break;
-    case ETriangle:
-    {
-        auto iside = 15;
-        TPZGeoElSide gelside(gel,iside);
-        new TPZCompElHDivSBFem<TPZShapeTriang>(mesh, gel1d, gelside, index);
-    }
-        break;
-    case EQuadrilateral:
-    {
-        auto iside = 20;
-        TPZGeoElSide gelside(gel,iside);
-        new TPZCompElHDivSBFem<TPZShapeQuad>(mesh, gel1d, gelside, index);
-    }
-        break;
-    default:
-        DebugStop();
-        break;
-    }
 }
 
-TPZCompEl * CreateSBFemHdivCompEl(TPZCompMesh &mesh, TPZGeoEl *gel, TPZGeoEl * gel1d, int64_t &index)
+// NEED TO CHECK IT
+void TPZSBFemVolumeHdiv::SetElementGroupIndex(int64_t index)
 {
-    new TPZSBFemVolumeHdiv(mesh, gel, gel1d, index);    
+    fElementGroupIndex = index;
+    std::map<int64_t, int> globtolocal;
+    TPZCompEl *celgr = Mesh()->Element(index);
+    fElementGroup = celgr;
+    int nc = celgr->NConnects();
+    TPZManVector<int, 10> firsteq(nc + 1, 0);
+    for (int ic = 0; ic < nc; ic++)
+    {
+        globtolocal[celgr->ConnectIndex(ic)] = ic;
+        TPZConnect &c = celgr->Connect(ic);
+        firsteq[ic + 1] = firsteq[ic] + c.NShape() * c.NState();
+    }
+    int neq = 0;
+    TPZCompEl *celskeleton = Mesh()->Element(fSkeleton);
+    nc = celskeleton->NConnects();
+    for (int ic = 0; ic < nc; ic++)
+    {
+        TPZConnect &c = celskeleton->Connect(ic);
+        neq += c.NShape() * c.NState();
+    }
+    fLocalIndices.Resize(neq);
+    int count = 0;
+    for (int ic = 0; ic < nc; ic++)
+    {
+        int64_t cindex = celskeleton->ConnectIndex(ic);
+#ifdef PZDEBUG
+        if (globtolocal.find(cindex) == globtolocal.end()) {
+            DebugStop();
+        }
+#endif
+        TPZConnect &c = celskeleton->Connect(ic);
+        int neq = c.NShape() * c.NState();
+        int locfirst = firsteq[globtolocal[cindex]];
+        for (int eq = 0; eq < neq; eq++)
+        {
+            fLocalIndices[count++] = locfirst + eq;
+        }
+    }
+#ifdef PZDEBUG
+    if (count != neq) DebugStop();
+#endif
+}
+
+TPZCompEl * CreateSBFemMultiphysicsCompEl(TPZMultiphysicsCompMesh &mesh, TPZGeoEl *gel, int64_t &index)
+{
+    // new TPZSBFemVolumeHdiv(mesh, gel, index);    
 }

@@ -13,7 +13,9 @@
 #include "pzelmat.h"
 #include "TPZSBFemVolume.h"
 #include "TPZCompElHDivSBFem.h"
+#include "TPZMultiphysicsCompMesh.h"
 #include "TPZSBFemMultiphysicsElGroup.h"
+#include "pzmultiphysicselement.h"
 
 #include "pzshapelinear.h"
 #include "pzshapetriang.h"
@@ -23,19 +25,30 @@
 using namespace std;
 using namespace pzshape;
 
-class TPZSBFemVolumeHdiv : public TPZInterpolationSpace
+class TPZSBFemVolumeHdiv : public TPZMultiphysicsElement
 {
-    int fSkeleton;
+    /// index of element group
+    int64_t fElementGroupIndex = -1;
 
-    int fLeftfluxMatId, fRightfluxMatId;
+    int fSkeleton;
 
     TPZCompEl *fElementGroup = 0;
 
+	/** @brief List of pointers to computational elements */
+	TPZManVector<TPZCompElSide ,5> fElementVec;
+    	
+	/** @brief Indexes of the connects of the element */
+	TPZVec<int64_t> fConnectIndexes;
+    
+    /// pointer to the integration rule
     TPZIntPoints *fIntRule = 0;
+    
+    /// vector of local indices of multipliers in the group
+    TPZManVector<int64_t> fLocalIndices;
 
 public:
     
-    TPZSBFemVolumeHdiv(TPZCompMesh &mesh, TPZGeoEl * gel, TPZGeoEl * gel1d, int64_t &index);
+    TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, TPZMultiphysicsElement * cel);
     
     virtual ~TPZSBFemVolumeHdiv()
     {
@@ -52,14 +65,19 @@ public:
         return fSkeleton;
     }
 
-    void SetElementGroupIndex(int64_t index)
+    void SetPressureIds(int64_t leftpressure, int64_t rightpressure)
     {
         DebugStop();
     }
 
+    void SetFluxIds(int64_t leftflux, int64_t rightflux)
+    {
+        DebugStop();
+    }
+
+    /** @brief Method for creating a copy of the element */
     virtual TPZCompEl *Clone(TPZCompMesh &mesh) const
     {
-        // till I remember how this works
         DebugStop();
         return 0;
     }
@@ -68,10 +86,11 @@ public:
                                     std::map<int64_t,int64_t> & gl2lcConMap,
                                     std::map<int64_t,int64_t> & gl2lcElMap) const
     {
-        // till I remember how this works
         DebugStop();
         return 0;
     }
+
+    void SetElementGroupIndex(int64_t index);
 
     /** @brief Returns the number of nodes of the element */
     virtual int NConnects() const
@@ -96,19 +115,34 @@ public:
         return reference->Dimension();
     }
 
-    virtual void PRefine (int order)
+    virtual void AddElement(const TPZCompElSide &cel, int64_t mesh)
     {
-        TPZCompEl *cel = Mesh()->Element(fSkeleton);
-        TPZInterpolationSpace *intel = dynamic_cast<TPZInterpolationSpace *> (cel);
-        intel->PRefine(order);
+        if (fElementVec.size() <= mesh)
+        {
+            fElementVec.resize(mesh+1);
+            fActiveApproxSpace.Resize(mesh+1, 1);
+        }
+        fElementVec[mesh] = cel;
     }
-    
-    void SetPreferredOrder(int order)
+
+    virtual void CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef) override
     {
-        fPreferredOrder = order;
-        TPZCompEl *cel = Mesh()->Element(fSkeleton);
-        TPZInterpolationSpace *intel = dynamic_cast<TPZInterpolationSpace *> (cel);
-        intel->SetPreferredOrder(order);
+        DebugStop();
+    }
+
+    virtual void CreateGraphicalElement(TPZGraphMesh &grmesh, int dimension) override
+    {
+        DebugStop();
+    }
+
+    virtual void Solution(TPZVec<REAL> &qsi,int var,TPZVec<STATE> &sol) override
+    {
+        DebugStop();
+    }
+
+    virtual void SetConnectIndex(int inode, int64_t index)
+    {
+        DebugStop();
     }
 
     virtual TPZIntPoints & GetIntegrationRule() const
@@ -132,64 +166,52 @@ public:
         fIntRule = Reference()->CreateSideIntegrationRule(nsides-1, 1);
     }
 
-    void Shape(TPZVec<REAL> &qsi, TPZFMatrix<REAL> &phi, TPZFMatrix<REAL> &dphidxi)
+    virtual void AddElement(TPZCompEl *cel, int64_t mesh)
     {
         DebugStop();
     }
 
-    virtual int NConnectShapeF(int icon, int order) const
-    {
-        TPZConnect &c = Connect(icon);
-        return c.NShape();
-    }
-
-    virtual int NShapeF() const
-    {
-        int nc = NConnects();
-        int nshape = 0;
-        for (int ic=0; ic<nc; ic++) {
-            TPZConnect &c = Connect(ic);
-            nshape += c.NShape();
-        }
-        return nshape;
-    }
-
-    virtual int SideConnectLocId(int icon,int is) const
+    virtual TPZCompEl *Element(int64_t elindex)
     {
         DebugStop();
-		return 0;
+        return 0;
     }
 
-    virtual int NSideConnects(int iside) const
-    {
-        DebugStop();
-		return 0;
-    }
-
-    virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const
+    virtual TPZManVector<TPZCompElSide,5> & ElementVec()
     {
         DebugStop();
     }
 
-    virtual void SetConnectIndex(int inode, int64_t index)
+    virtual TPZCompEl *ReferredElement(int64_t mesh)
+    {
+        DebugStop();
+        return 0;
+    }
+
+    virtual int64_t NMeshes() override
+    {
+        return fElementVec.size();
+    }
+
+    virtual void SetConnectIndexes(TPZVec<int64_t> &indexes)
+    {
+        fConnectIndexes = indexes;
+    }
+
+    virtual void AffineTransform(TPZVec<TPZTransform<> > &trVec) const
+    {
+        DebugStop();
+    }
+
+    virtual void InitMaterialData(TPZVec<TPZMaterialData > &dataVec, TPZVec<int64_t> *indices = 0)
+    {
+        DebugStop();
+    }
+
+    virtual void PolynomialOrder(TPZVec<int> &order) const
     {
         DebugStop();
     }
 };
 
-TPZCompEl * CreateSBFemHdivCompEl(TPZCompMesh &mesh, TPZGeoEl *gel, TPZGeoEl * gel1d, int64_t &index);
-
-// #include "pzshapetriang.h"
-// #include "pzshapepoint.h"
-// #include "pzshapelinear.h"
-// #include "pzshapequad.h"
-
-// using namespace pzshape;
-
-// template class TPZRestoreClass< TPZCompElHDivSBFem<TPZShapeLinear>>;
-// template class TPZRestoreClass< TPZCompElHDivSBFem<TPZShapeTriang>>;
-// template class TPZRestoreClass< TPZCompElHDivSBFem<TPZShapeQuad>>;
-
-// template class TPZCompElHDivSBFem<TPZShapeTriang>;
-// template class TPZCompElHDivSBFem<TPZShapeLinear>;
-// template class TPZCompElHDivSBFem<TPZShapeQuad>;
+TPZCompEl * CreateSBFemMultiphysicsCompEl(TPZMultiphysicsCompMesh &mesh, TPZGeoEl *gel, int64_t &index);
