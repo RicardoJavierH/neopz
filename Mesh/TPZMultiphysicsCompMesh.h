@@ -69,7 +69,7 @@ public:
     /// Get the vector of active physics
     TPZVec<int> & GetActiveApproximationSpaces();
     
-private:
+// private: // Commented here while I don't do a interface for TPZBuildSBFemHdiv work with AutoBuild()
     /// add the elements from the atomic meshes to the multiphysics elements
     void AddElements();
     /// add the connects from the atomic meshes

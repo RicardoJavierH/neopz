@@ -34,7 +34,7 @@ public:
 
     int GetSideCollapsedEl(TPZGeoEl * gel);
 
-    void BuildMultiphysicsCompMesh(TPZCompMesh &cmesh);
+    void BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh &cmesh);
 
     void CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget);
 

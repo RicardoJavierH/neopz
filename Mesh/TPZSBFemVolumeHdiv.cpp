@@ -20,7 +20,7 @@
 static LoggerPtr logger(Logger::getLogger("pz.mesh.sbfemvolume"));
 #endif
 
-TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, TPZMultiphysicsElement * cel)
+TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, int64_t & index) : TPZMultiphysicsElement(mesh, gel, index)
 {
 }
 
@@ -72,5 +72,5 @@ void TPZSBFemVolumeHdiv::SetElementGroupIndex(int64_t index)
 
 TPZCompEl * CreateSBFemMultiphysicsCompEl(TPZMultiphysicsCompMesh &mesh, TPZGeoEl *gel, int64_t &index)
 {
-    // new TPZSBFemVolumeHdiv(mesh, gel, index);    
+    new TPZSBFemVolumeHdiv(mesh, gel, index);    
 }

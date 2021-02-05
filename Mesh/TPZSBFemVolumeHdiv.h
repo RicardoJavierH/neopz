@@ -48,7 +48,7 @@ class TPZSBFemVolumeHdiv : public TPZMultiphysicsElement
 
 public:
     
-    TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, TPZMultiphysicsElement * cel);
+    TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, int64_t & index);
     
     virtual ~TPZSBFemVolumeHdiv()
     {
@@ -166,9 +166,25 @@ public:
         fIntRule = Reference()->CreateSideIntegrationRule(nsides-1, 1);
     }
 
-    virtual void AddElement(TPZCompEl *cel, int64_t mesh)
+    /** @brief add an element to the datastructure */
+    // NEED TO CHECK IT
+    virtual void AddElement(TPZCompEl *cel, int64_t meshindex) override
     {
-        DebugStop();
+		if (fElementVec.size() <= meshindex) 
+		{
+			fElementVec.resize(meshindex+1);
+            fActiveApproxSpace.Resize(meshindex+1, 1);
+		}
+        if (cel)
+        {
+            TPZGeoEl *gel = cel->Reference();
+            TPZCompElSide celside(cel,gel->NSides()-1);
+            fElementVec[meshindex] = celside;
+        }
+        else
+        {
+            fElementVec[meshindex] = TPZCompElSide();
+        }
     }
 
     virtual TPZCompEl *Element(int64_t elindex)
@@ -179,7 +195,7 @@ public:
 
     virtual TPZManVector<TPZCompElSide,5> & ElementVec()
     {
-        DebugStop();
+        return fElementVec;
     }
 
     virtual TPZCompEl *ReferredElement(int64_t mesh)

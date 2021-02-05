@@ -29,28 +29,41 @@
 static LoggerPtr logger(Logger::getLogger("pz.mesh.tpzbuildsbfem"));
 #endif
 
-void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
+// This function will create both TPZSBFemMultiphysicsVol and TPZSBFemMultiphysicsElGroup.
+// Sequence of the method:
+// 1. Define geometry with the hybrid dim-1 elements;
+// 2. Update atomic meshes (cmeshflux and cmeshpressure);
+// 3. Update Multiphysics mesh;
+// 4. Create interface elements;
+// 5. Create SBFemMultiphysicsVol objects based on the multiphysics elements;
+// 6. Update the multiphysics mesh to contemplate only the SBFem elements (ignore FE els);
+// 7. Define SBFemMultiphysicsElGroups as a group of SBFemMultiphysicsVol;
+// 8. Condense the DOFs of the SBFemMultiphysicsElGroups.
+void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmeshm)
 {
-    // Getting the multiphysics mesh
-    auto cmeshm = dynamic_cast<TPZMultiphysicsCompMesh * >(&cmesh);
-    if (!cmeshm)
-    {
-        DebugStop();
-    }
-    
-    TPZManVector<TPZCompMesh*, 2> cmeshvec = cmeshm->MeshVector();
+    TPZManVector<TPZCompMesh*, 2> cmeshvec = cmeshm.MeshVector();
+
+    // The flux cmesh must have:
+    // 1. Material ID defining the map EGroup -> EMatVol only!
+    // The Skeleton will be defined in the pressure and multiphysics mesh only, since it represents the external pressure.
     auto cmeshflux = cmeshvec[0];
+
+    // The pressure cmesh must have:
+    // 1. Material ID defining the map EGroup -> EMatVol.
+    // 2. The Material ID related to the Skeleton. It will be a Neumann BC.
+    // 3. The boundary conditions.
+    // All these materials must be defined in the cmeshm too.
     auto cmeshpressure = cmeshvec[1];
 
     // ********** CREATING THE GEOMETRY
     // Skeleton Elements + Collapsed Elements + External elements:
 
-    // Before calling this function the Skeleton elements were already created
+    // Before calling this function the Skeleton elements has been already created
     // So I just need to create the collapsed and external elements
 
     // Creating dim-1 elements CompEls - Skeleton and BCs
-    int dim = cmeshm->Dimension();
-    auto fGMesh = cmeshm->Reference();
+    int dim = cmeshm.Dimension();
+    auto fGMesh = cmeshm.Reference();
 
     set<int> matids;
     for (auto gel : fGMesh->ElementVec())
@@ -63,27 +76,26 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
             matids.insert(gel->MaterialId());
         }
     }
-    cmeshflux->ApproxSpace().SetAllCreateFunctionsHDiv(dim);
-    cmeshflux->AutoBuild(matids);
     cmeshpressure->ApproxSpace().SetAllCreateFunctionsDiscontinuous();
     cmeshpressure->AutoBuild(matids);
 
     // Creating volumetric collapsed elements
     set<int> matidstarget; // matid of the collapsed element (output parameter)
     // The updated mesh will be fGMesh
-    // cmeshpressure will be used as the basis to construct the collapsed geoels, once the BCs are there
+    // But the comp mesh used must be cmeshpressure because the connectivity of the multiphysics mesh
+    // hasn't been created yet.
     CreateCollapsedGeoEls(*cmeshpressure, matidstarget);
-    cmeshm->SetReference(fGMesh);
+    cmeshm.SetReference(fGMesh);
 
     // Creating dim-1 elements: External flux and external pressure.
     CreateExternalElements(fGMesh, matidstarget);
 
 #ifdef PZDEBUG
-    ofstream outvtk("GeometrySBFEM.vtk");
+    ofstream outvtk("GeometryHybridSBFEM.vtk");
     TPZVTKGeoMesh vtk;
     vtk.PrintGMeshVTK(fGMesh, outvtk, true);
-    ofstream gout("buildsbfemgmesh.txt");
-    cmeshflux->Reference()->Print(gout);
+    ofstream gout("GeometryHybridSBFEM.txt");
+    fGMesh->Print(gout);
 #endif
 
     // ********** CREATING THE COMPUTATIONAL MESH
@@ -94,15 +106,15 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
     CreateCompElFlux(*cmeshflux, matidstarget);
 
     // Then, creating the multiphysics mesh
-    CreateSBFEMMultiphysicsMesh(*cmeshm);
+    CreateSBFEMMultiphysicsMesh(cmeshm);
     TPZManVector<int> active(2,1);
-    cmeshm->BuildMultiphysicsSpace(active, cmeshvec);
-    cmeshm->LoadReferences();
-    cmeshm->CleanUpUnconnectedNodes();
+    cmeshm.BuildMultiphysicsSpace(active, cmeshvec);
+    cmeshm.LoadReferences();
+    cmeshm.CleanUpUnconnectedNodes();
 
-    AddInterfaceElements(*cmeshm);
+    AddInterfaceElements(cmeshm);
 
-    CreateSBFEMMultiphysicsVol(*cmeshm, matidstarget);
+    CreateSBFEMMultiphysicsVol(cmeshm, matidstarget);
 
 //     // Based on the multiphysics mesh, create SBFemElementGroups
 //     // The SBFemMultiphysicsElGroups = Group of collapsed flux elements (SBFemVolumes) + pressure compels
@@ -119,7 +131,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZCompMesh &cmesh)
 // #endif
 }
 
-// GEOMETRY FUNCTIONS
+// Creates geometric collapsed elements
 void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget)
 {
     // all computational elements for internal DOFs have been loaded for flux and pressure meshes
@@ -135,9 +147,7 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
     }
 
     // fGMesh = gmesh for the multiphysics mesh
-    // gmeshflux = gmesh for the flux mesh (it doesn't have external geoels yet).
-
-    // Creating geometric collapsed elements for the multiphysics mesh based on the flux mesh
+    // Creating geometric collapsed elements for the multiphysics mesh based on the pressure mesh
     auto dim = fGMesh->Dimension();
     auto gmeshpressure = cmeshpressure.Reference();
 
@@ -255,6 +265,8 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
 #endif
 }
 
+// The order is: fDifPressure - fInterface - fExternalLeftflux - fInternal - fExternalRightflux - fInterface - fSkeleton
+// fSkeleton is the external pressure.
 void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget)
 {
     for (auto gel : gmesh->ElementVec())
@@ -283,22 +295,24 @@ void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & ma
     }
 }
 
-// COMPUTATIONAL ELEMENT FUNCTIONS
+// 
 void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
 {
     auto dim = cmeshpressure.Dimension()-1; // materials with dim-1 dimensional elements
     auto nstate = cmeshpressure.MaterialVec().begin()->second->NStateVariables();
 
-    auto matleft = new TPZNullMaterial(fInternal, dim, nstate);
-    cmeshpressure.InsertMaterialObject(matleft);
+    // Pressure mesh will be composed of:
+    // fDifpressure + fInternal + fSkeleton (external pressure)
+    auto matinternal = new TPZNullMaterial(fInternal, dim, nstate);
+    cmeshpressure.InsertMaterialObject(matinternal);
 
-    auto matright = new TPZNullMaterial(fDifpressure, dim, nstate);
-    cmeshpressure.InsertMaterialObject(matright);
+    auto matleft = new TPZNullMaterial(fDifpressure, dim, nstate);
+    cmeshpressure.InsertMaterialObject(matleft);
 
     set<int> matids = {fInternal, fDifpressure};
     cmeshpressure.SetAllCreateFunctionsContinuous();
     cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
-    cmeshpressure.AutoBuild(matids);
+    cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
 
     for(auto newnod : cmeshpressure.ConnectVec())
     {
@@ -449,28 +463,24 @@ void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm)
 
 void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget)
 {
-    for (auto cel : cmeshm.ElementVec())
+    for (auto gel : fGMesh->ElementVec())
     {
         // I am searching for a multiphysics element in which the geometric element is a collapsed element
-        if (!cel)
+        // It only creates the volumetric multiphysics element, working as an AutoBuild()
+        if (!gel)
         {
             continue;
         }
-        auto celmult = dynamic_cast<TPZMultiphysicsElement *>(cel);
-        if (!celmult || !(celmult->Reference()))
-        {
-            continue;
-        }
-        auto gel = celmult->Reference();
         auto it = matidtarget.find(gel->MaterialId());
         if (it == matidtarget.end())
         {
             continue;
         }
-        TPZSBFemVolumeHdiv sbfem(cmeshm, gel, celmult);
+        int64_t index;
+        auto cel = CreateSBFemMultiphysicsCompEl(cmeshm, gel, index);
     }
-    // now adjust the computational multiphysics mesh to not see the reference to other element types and meshes, 
-    // but use only TPZSBFemVolumeHdiv.
+    cmeshm.AddElements(); // NEED TO TEST IT
+    cmeshm.AddConnects();
 }
 
 // void TPZBuildSBFemHdiv::AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm)
