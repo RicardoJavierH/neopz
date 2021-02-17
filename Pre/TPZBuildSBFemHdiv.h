@@ -28,6 +28,11 @@ public:
     /// simple constructor
     TPZBuildSBFemHdiv(TPZAutoPointer<TPZGeoMesh> &gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
+        fDifpressure = fSkeletonMatId + 1;
+        fInterface = fDifpressure +1;
+        fExternalleftflux = fInterface +1;
+        fInternal = fExternalleftflux+1;
+        fExternalrightflux = fInternal+1;
     }
 
     int GetSideSkeletonEl(TPZGeoEl * gel);

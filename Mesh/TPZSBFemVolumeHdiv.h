@@ -189,8 +189,7 @@ public:
 
     virtual TPZCompEl *Element(int64_t elindex)
     {
-        DebugStop();
-        return 0;
+        return fElementVec[elindex].Element();
     }
 
     virtual TPZManVector<TPZCompElSide,5> & ElementVec()
@@ -200,8 +199,14 @@ public:
 
     virtual TPZCompEl *ReferredElement(int64_t mesh)
     {
-        DebugStop();
-        return 0;
+#ifdef PZDEBUG
+		if (fElementVec.size() <= mesh) {
+			PZError << "Error at " << __PRETTY_FUNCTION__ << " index does not exist!\n";
+			DebugStop();
+		};
+#endif
+		
+		return fElementVec[mesh].Element();
     }
 
     virtual int64_t NMeshes() override
