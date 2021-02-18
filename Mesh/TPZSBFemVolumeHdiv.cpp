@@ -20,8 +20,9 @@
 static LoggerPtr logger(Logger::getLogger("pz.mesh.sbfemvolume"));
 #endif
 
-TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, int64_t & index) : TPZMultiphysicsElement(mesh, gel, index)
+TPZSBFemVolumeHdiv::TPZSBFemVolumeHdiv(TPZMultiphysicsCompMesh & mesh, TPZGeoEl * gel, int64_t & index) : TPZInterpolationSpace(mesh, gel, index)
 {
+    fElementVec.Resize(7);
 }
 
 // NEED TO CHECK IT

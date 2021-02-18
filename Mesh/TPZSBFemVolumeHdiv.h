@@ -16,6 +16,8 @@
 #include "TPZMultiphysicsCompMesh.h"
 #include "TPZSBFemMultiphysicsElGroup.h"
 #include "pzmultiphysicselement.h"
+#include "pzmultiphysicscompel.h"
+#include "pzgeoquad.h"
 
 #include "pzshapelinear.h"
 #include "pzshapetriang.h"
@@ -25,17 +27,17 @@
 using namespace std;
 using namespace pzshape;
 
-class TPZSBFemVolumeHdiv : public TPZMultiphysicsElement
+class TPZSBFemVolumeHdiv : public TPZInterpolationSpace
 {
     /// index of element group
     int64_t fElementGroupIndex = -1;
 
-    int fSkeleton;
+    int fSkeleton = -1;
 
     TPZCompEl *fElementGroup = 0;
 
 	/** @brief List of pointers to computational elements */
-	TPZManVector<TPZCompElSide ,5> fElementVec;
+	TPZManVector<TPZCompEl* ,7> fElementVec;
     	
 	/** @brief Indexes of the connects of the element */
 	TPZVec<int64_t> fConnectIndexes;
@@ -45,6 +47,15 @@ class TPZSBFemVolumeHdiv : public TPZMultiphysicsElement
     
     /// vector of local indices of multipliers in the group
     TPZManVector<int64_t> fLocalIndices;
+    
+    /// Section of the phi vector associated with this volume element
+    TPZFNMatrix<30,std::complex<double> > fPhi;
+    
+    /// Eigenvlues associated with the internal shape functions
+    TPZManVector<std::complex<double> > fEigenvalues;
+    
+    /// Multiplier coeficients associated with the solution
+    TPZFNMatrix<30,std::complex<double> > fCoeficients;
 
 public:
     
@@ -53,6 +64,11 @@ public:
     virtual ~TPZSBFemVolumeHdiv()
     {
         // Reference()->ResetReference();
+    }
+
+    void AddElement(TPZCompEl * cel, int localindex)
+    {
+        fElementVec[localindex] = cel;
     }
 
     void SetSkeleton(int64_t skeleton)
@@ -115,16 +131,6 @@ public:
         return reference->Dimension();
     }
 
-    virtual void AddElement(const TPZCompElSide &cel, int64_t mesh)
-    {
-        if (fElementVec.size() <= mesh)
-        {
-            fElementVec.resize(mesh+1);
-            fActiveApproxSpace.Resize(mesh+1, 1);
-        }
-        fElementVec[mesh] = cel;
-    }
-
     virtual void CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef) override
     {
         DebugStop();
@@ -166,52 +172,58 @@ public:
         fIntRule = Reference()->CreateSideIntegrationRule(nsides-1, 1);
     }
 
-    /** @brief add an element to the datastructure */
-    // NEED TO CHECK IT
-    virtual void AddElement(TPZCompEl *cel, int64_t meshindex) override
+    virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const
     {
-		if (fElementVec.size() <= meshindex) 
-		{
-			fElementVec.resize(meshindex+1);
-            fActiveApproxSpace.Resize(meshindex+1, 1);
-		}
-        if (cel)
-        {
-            TPZGeoEl *gel = cel->Reference();
-            TPZCompElSide celside(cel,gel->NSides()-1);
-            fElementVec[meshindex] = celside;
-        }
-        else
-        {
-            fElementVec[meshindex] = TPZCompElSide();
-        }
+        DebugStop();
     }
 
-    virtual TPZCompEl *Element(int64_t elindex)
+    virtual int NSideConnects(int iside) const
     {
-        return fElementVec[elindex].Element();
+        DebugStop();
+        return 0;
     }
 
-    virtual TPZManVector<TPZCompElSide,5> & ElementVec()
+    virtual int SideConnectLocId(int icon,int is) const
+    {
+        DebugStop();
+        return 0;
+    }
+
+    virtual int NShapeF() const
+    {
+        DebugStop();
+        return 0;
+    }
+
+    virtual int NConnectShapeF(int icon, int order) const
+    {
+        DebugStop();
+        return 0;
+    }
+
+    virtual void Shape(TPZVec<REAL> &qsi,TPZFMatrix<REAL> &phi,TPZFMatrix<REAL> &dphidxi)
+    {
+        DebugStop();
+    }
+
+    virtual void SetPreferredOrder ( int order )
+    {
+        DebugStop();
+    }
+
+    virtual void PRefine ( int order )
+    {
+        DebugStop();
+    }
+
+    virtual TPZCompEl *Element(int elindex)
+    {
+        return fElementVec[elindex];
+    }
+
+    virtual TPZManVector<TPZCompEl * ,7> & ElementVec()
     {
         return fElementVec;
-    }
-
-    virtual TPZCompEl *ReferredElement(int64_t mesh)
-    {
-#ifdef PZDEBUG
-		if (fElementVec.size() <= mesh) {
-			PZError << "Error at " << __PRETTY_FUNCTION__ << " index does not exist!\n";
-			DebugStop();
-		};
-#endif
-		
-		return fElementVec[mesh].Element();
-    }
-
-    virtual int64_t NMeshes() override
-    {
-        return fElementVec.size();
     }
 
     virtual void SetConnectIndexes(TPZVec<int64_t> &indexes)
@@ -219,20 +231,45 @@ public:
         fConnectIndexes = indexes;
     }
 
-    virtual void AffineTransform(TPZVec<TPZTransform<> > &trVec) const
-    {
-        DebugStop();
-    }
+    // virtual void AffineTransform(TPZVec<TPZTransform<> > &trVec) const
+    // {
+    //     DebugStop();
+    // }
 
-    virtual void InitMaterialData(TPZVec<TPZMaterialData > &dataVec, TPZVec<int64_t> *indices = 0)
-    {
-        DebugStop();
-    }
+    // virtual void InitMaterialData(TPZVec<TPZMaterialData > &dataVec, TPZVec<int64_t> *indices = 0)
+    // {
+    //     DebugStop();
+    // }
 
-    virtual void PolynomialOrder(TPZVec<int> &order) const
-    {
-        DebugStop();
-    }
+    // virtual void PolynomialOrder(TPZVec<int> &order) const
+    // {
+    //     DebugStop();
+    // }
+
+
+    // virtual void Print(std::ostream &out = std::cout) const
+    // {
+    //     out << "Printing " << __PRETTY_FUNCTION__ << std::endl;
+    //     TPZCompEl::Print(out);
+    //     out << "Group Element Index " << fElementGroupIndex << std::endl;
+    //     out << "Skeleton Element Index " << fSkeleton << std::endl;
+    //     out << "Local Indices " << fLocalIndices << std::endl;
+    //     fCoeficients.Print("Coef =",out,EMathematicaInput);
+    //     fPhi.Print("Phi = ",out,EMathematicaInput);
+    //     if (fCoeficients.Rows())
+    //     {
+    //         TPZManVector<std::complex<double>,5> prod(fPhi.Rows(),0.);
+    //         for (int i=0; i<fPhi.Rows(); i++) {
+    //             for (int j=0; j<fPhi.Cols(); j++) {
+    //                 prod[i] += fPhi.GetVal(i,j)*fCoeficients.GetVal(j,0);
+    //             }
+    //         }
+    //         out << "Values at border " << prod << std::endl;
+    //     }
+    //     for (int i=0; i<NConnects(); i++) {
+    //         Connect(fConnectIndexes[i]).Print(*Mesh(),out);
+    //     }
+    // }
 };
 
 TPZCompEl * CreateSBFemMultiphysicsCompEl(TPZMultiphysicsCompMesh &mesh, TPZGeoEl *gel, int64_t &index);

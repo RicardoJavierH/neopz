@@ -17,7 +17,7 @@ class TPZBuildSBFemHdiv : public TPZBuildSBFem
 {
     int fDifpressure, fInterface, fExternalleftflux, fInternal, fExternalrightflux;
 
-    set<int> fCondensedMatids = {fDifpressure, fExternalleftflux, fInternal, fExternalrightflux};
+    set<int> fCondensedMatids;
 
     map<int64_t,TPZCompEl *> fGeltocel;
 
@@ -33,6 +33,7 @@ public:
         fExternalleftflux = fInterface +1;
         fInternal = fExternalleftflux+1;
         fExternalrightflux = fInternal+1;
+        fCondensedMatids = {fDifpressure, fExternalleftflux, fInternal, fExternalrightflux};
     }
 
     int GetSideSkeletonEl(TPZGeoEl * gel);
@@ -51,9 +52,11 @@ public:
 
     void CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cmeshm);
 
-    void AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm);
+    void AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm, set<int> & matids1d);
     
-    void CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget);
+    void CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cmeshm, set<int> &matid1d, set<int> & matidtarget);
+
+    void CreateSBFEMMultiphysicsElGroups(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget);
 
 // ONGOING
     // void AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm);
