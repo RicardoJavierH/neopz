@@ -107,6 +107,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     // Then, creating the multiphysics mesh
     // Next method will setup the multiphysics mesh
     CreateSBFEMMultiphysicsMesh(cmeshm);
+    cmeshm.SetName("multiphysicssbfem");
     TPZManVector<int> active(2,1);
     cmeshm.BuildMultiphysicsSpace(active, cmeshvec);
     cmeshm.LoadReferences();
@@ -114,6 +115,9 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
 
     // Adding the interface elements
     AddInterfaceElements(cmeshm, matids1d);
+
+    // Ajusting the connectivity of these elements
+    AdjustExternalPressureConnectivity(cmeshm);
 
     // Creating the SBFEMVolumeHdiv elements
     // delete all elements and connects in the mesh
@@ -133,9 +137,28 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     cmeshpressure->Print(pout);
 #endif
     CreateSBFEMMultiphysicsElGroups(cmeshm, matidstarget);
-
-//     // Ajusting the connectivity of these elements
-//     // AdjustExternalPressureConnectivity(*cmeshm);
+    
+    // auto ElementVec = cmeshm.ElementVec();
+    // auto nel = cmeshm.NElements();
+    // for (int64_t el = 0; el<nel; el++) {
+    //     TPZCompEl *cel = cmeshm.Element(el);
+    //     auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
+    //     if (sbfemgr)
+    //     {
+    //         continue;
+    //     }
+    //     auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
+    //     if (sbfemvol)
+    //     {
+    //         continue;
+    //     }
+        
+    //     if(cel)
+    //     {
+    //         delete cel;
+    //         ElementVec[el] = 0;
+    //     }
+    // }
 
 // #ifdef PZDEBUG
 //     ofstream mout("cmeshmultiphysics.txt");
@@ -321,7 +344,7 @@ void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
     auto matleft = new TPZNullMaterial(fDifpressure, dim, nstate);
     cmeshpressure.InsertMaterialObject(matleft);
 
-    set<int> matids = {fSkeletonMatId, fInternal, fDifpressure};
+    set<int> matids = {fInternal, fDifpressure};
     cmeshpressure.SetAllCreateFunctionsContinuous();
     cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
     cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
@@ -347,30 +370,38 @@ void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & mati
     cmeshflux.InsertMaterialObject(matboundright);
 
     map<int64_t,TPZCompEl *> geltocel;
-    for (auto gel1d : fGMesh->ElementVec())
+    for (auto gelcollapsed : fGMesh->ElementVec())
     {
-        if (!gel1d) continue;
-        if (gel1d->MaterialId() != fInternal) continue;
-        int64_t index;
-        auto side = GetSideSkeletonEl(gel1d);
+        if (!gelcollapsed) continue;
 
-        // Getting the Skeleton's neighbour that has the collapsed MatID
-        // Order of the matids: fInternal -> fExtleftflux -> fInterface -> fDifPressure -> fSkeleton -> Egroup -> fCollapsed. 
-        TPZGeoElSide gelside(gel1d, side);
-        auto gelcollapsedside = gelside.Neighbour();
-        int mid = gelcollapsedside.Element()->MaterialId();
-        auto it = matidtarget.find(mid);
-        while (it == matidtarget.end())
+        int midcollapsed = gelcollapsed->MaterialId();
+        auto it = matidtarget.find(midcollapsed);
+        if (it == matidtarget.end())
         {
-            gelcollapsedside = gelcollapsedside.Neighbour();
-            mid = gelcollapsedside.Element()->MaterialId();
-            it = matidtarget.find(mid);
+            continue;
         }
+
+        // the 3rd neighbour is fInternal
+        auto side = GetSideCollapsedEl(gelcollapsed);
+        TPZGeoElSide gelcollapsedside(gelcollapsed, side);
+
+        auto gel1dside = gelcollapsedside.Neighbour(); // fInterface
+        gel1dside = gel1dside.Neighbour(); // fExtrightflux
+        gel1dside = gel1dside.Neighbour(); // fInternal
+
+        auto gel1d = gel1dside.Element();
+
+        if (gel1d->MaterialId() != fInternal)
+        {
+            DebugStop();
+        }
+
+        int64_t index;
         auto celhdivc = new TPZCompElHDivSBFem<pzshape::TPZShapeLinear>(cmeshflux, gel1d, gelcollapsedside, index);
         geltocel[gel1d->Index()] = celhdivc;
+        cmeshflux.ExpandSolution();
+        cmeshflux.Reference()->ResetReference();
     }
-    cmeshflux.ExpandSolution();
-    cmeshflux.Reference()->ResetReference();
     
     // Now setting the geoelement for the HdivBound
     // Order of the neighbours:
@@ -532,16 +563,32 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
         // 5th neighbour - fInterface;
         // 6th neighbour - fDifPressure;
         // 7th neighbour - Skeleton.
-        for (auto i = 0; i < 7; i++)
+        auto neigh = gelside.Neighbour();
+        auto gel1d = neigh.Element();
+        if(!gel1d || !(gel1d->Reference()))
         {
-            auto neigh = gelside.Neighbour();
-            auto gel1d = neigh.Element();
+            DebugStop();
+        }
+        auto cel1d = gel1d->Reference();
+        auto celsbfem = cmeshm.Element(index);
+        auto sbfem = dynamic_cast<TPZSBFemVolumeHdiv * >(celsbfem);
+        if(sbfem)
+        {
+            sbfem->AddElement(cel1d, 0);
+        } else
+        {
+            DebugStop();
+        }   
+        for (auto i = 1; i < 7; i++)
+        {
+            neigh = neigh.Neighbour();
+            gel1d = neigh.Element();
             if(!gel1d || !(gel1d->Reference()))
             {
                 DebugStop();
             }
-            auto cel1d = gel1d->Reference();
-            auto celsbfem = cmeshm.Element(index);
+            cel1d = gel1d->Reference();
+            celsbfem = cmeshm.Element(index);
             auto sbfem = dynamic_cast<TPZSBFemVolumeHdiv * >(celsbfem);
             if(sbfem)
             {
@@ -554,66 +601,143 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
     }
 }
 
-// void TPZBuildSBFemHdiv::AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm)
-// {
-//     for (auto cel : cmeshm.ElementVec())
-//     {
-//         if (!cel)
-//         {
-//             DebugStop();
-//         }
-//         auto celgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
-//         if (!celgr)
-//         {
-//             DebugStop();
-//         }
-        
-//         // auto newid = -1;
-//         // auto nsides = 4;
-//         // auto dim = cel->Reference()->Dimension();
-
-//         // TPZStack<int64_t> internalprcon;
-
-//         // auto ncon = cel->NConnects() - nsides * dim;
-//         // perm.resize(ncon);
-
-//         // for (auto con : cmeshm->ConnectVec())
-//         // {
-//         //     if (con.SequenceNumber() == -1)
-//         //     {
-//         //         continue;
-//         //     }
-//         //     perm[con.SequenceNumber()] = con.SequenceNumber();
-//         // }
-
-//         // int64_t nf = cmeshf->NConnects() - 2*nsides;
-//         // auto id = nf+3*nsides;
-
-//         // for (int is = 0; is < nsides; is++)
-//         // {
-//         //     for (int ic = 0; ic < 3; ic++)
-//         //     {
-//         //         auto pos = nf + 3*nsides + is*6 + ic;
-//         //         perm[pos] = id;
-//         //         id++;
-//         //     }
-//         // }
-//         // for (int is = 0; is < nsides; is++)
-//         // {
-//         //     for (int ic = 0; ic < 3; ic++)
-//         //     {
-//         //         auto pos = nf + 3*nsides + is*6 + ic + 3;
-//         //         perm[pos] = id;
-//         //         id++;
-//         //     }
-//         // }
-//     }
-// }
-
-void TPZBuildSBFemHdiv::GroupandCondense()
+// For a quadrilateral S-element, the connectivity will be:
+// 8 internal fluxes (3 per side, but with continuity between sides)
+// 8 external fluxes (1 connect left, 1 connect right)
+// 12 internal pressures
+// 12 external pressure left (Differential of the pressure)
+// 12 external pressure right (average pressure)
+// I need to change the connectivity for the external pressure. PZ gives us a connectivity for the external pressure like:
+// (Differential of the pressure | Average pressure)
+// Side 1: 29 30 31 | 32 33 34 
+// Side 2: 35 36 37 | 38 39 40
+// Side 3: 41 42 43 | 44 45 46
+// Side 4: 47 48 49 | 50 51 52
+// But to obtain the adequate connectivity for SBFEM I must have:
+// Side 1: 29 30 31 | 41 42 43
+// Side 2: 32 33 34 | 44 45 46
+// Side 3: 35 36 37 | 47 48 49
+// Side 4: 38 39 40 | 50 51 52
+// Because in the stiffness matrix of the hybrid S-element I must have all connects related to the dif of the pressure 1st,
+// then all connects related to the average pressure, to obtain E0-div, E1-div, E2-div.
+void TPZBuildSBFemHdiv::AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm)
 {
-    DebugStop();
+    TPZManVector<int64_t> perm(cmeshm.NConnects());
+    for (auto con : cmeshm.ConnectVec())
+    {
+        if (con.SequenceNumber() == -1)
+        {
+            continue;
+        }
+        perm[con.SequenceNumber()] = con.SequenceNumber();
+    }
+    for (auto cel : cmeshm.ElementVec())
+    {
+        if (!cel)
+        {
+            continue;
+        }
+        auto celgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
+        if (!celgr)
+        {
+            continue;
+        }
+
+        auto elvec = celgr->GetElGroup();
+        auto nsidess = elvec.size();
+        if (cel->Dimension() != 2)
+        {
+            std::cout << "This code is not working for 3D yet \n";
+            DebugStop();
+        }
+        
+        TPZManVector<int64_t> permlocalleftpr(nsidess*3);
+        TPZManVector<int64_t> permlocalrightpr(nsidess*3);
+        for (auto cel : elvec)
+        {
+#ifdef PZDEBUG
+            if (!cel)
+            {
+                DebugStop();
+            }
+#endif
+            auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+#ifdef PZDEBUG
+            if (!sbfemvol)
+            {
+                DebugStop();
+            }
+#endif
+            // The vector with the elements will be:
+            // 1. Interface;
+            // 2. fExtrightflux;
+            // 3. fInternal;
+            // 4. fExtleftflux;
+            // 5. fInterface;
+            // 6. fDifPressure;
+            // 7. Skeleton.
+            // I'm interested about the connects of the elements 6 and 7  
+            auto celprleft = sbfemvol->Element(5);
+            auto celprright = sbfemvol->Element(6);
+#ifdef PZDEBUG  
+            if (!celprleft)
+            {
+                DebugStop();
+            }
+            if (!celprright)
+            {
+                DebugStop();
+            }
+#endif
+        }
+        
+        
+        // auto newid = -1;
+        // auto nsides = 4;
+        // auto dim = celgr->Reference()->Dimension();
+
+        // TPZStack<int64_t> internalprcon;
+
+        // auto ncon = celgr->NConnects() - nsides * dim;
+        // perm.resize(ncon);
+
+        // for (auto con : celgr->ConnectVec())
+        // {
+        //     if (con.SequenceNumber() == -1)
+        //     {
+        //         continue;
+        //     }
+        //     perm[con.SequenceNumber()] = con.SequenceNumber();
+        // }
+
+        // int64_t nf = cmeshf->NConnects() - 2*nsides;
+        // auto id = nf+3*nsides;
+
+        // for (int is = 0; is < nsides; is++)
+        // {
+        //     for (int ic = 0; ic < 3; ic++)
+        //     {
+        //         auto pos = nf + 3*nsides + is*6 + ic;
+        //         perm[pos] = id;
+        //         id++;
+        //     }
+        // }
+        // for (int is = 0; is < nsides; is++)
+        // {
+        //     for (int ic = 0; ic < 3; ic++)
+        //     {
+        //         auto pos = nf + 3*nsides + is*6 + ic + 3;
+        //         perm[pos] = id;
+        //         id++;
+        //     }
+        // }
+    }
 }
+
+// void TPZBuildSBFemHdiv::GroupandCondense()
+// {
+//     DebugStop();
+// }
 
 
 void TPZBuildSBFemHdiv::BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh)
@@ -738,7 +862,7 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsElGroups(TPZMultiphysicsCompMesh 
             if (!sbfemgr) {
                 DebugStop();
             }
-            // sbfemgr->AddElement(sbfem); NEED TO FIX
+            sbfemgr->AddElement(sbfem);
         }
     }
     

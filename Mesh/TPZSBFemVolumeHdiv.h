@@ -69,6 +69,14 @@ public:
     void AddElement(TPZCompEl * cel, int localindex)
     {
         fElementVec[localindex] = cel;
+        auto ncon = fConnectIndexes.size();
+        auto nconcel =cel->NConnects();
+        fConnectIndexes.Resize(ncon+nconcel);
+        for (auto i = 0; i < nconcel; i++)
+        {
+            fConnectIndexes[i+ncon] = cel->ConnectIndex(i);
+        }
+        
     }
 
     void SetSkeleton(int64_t skeleton)
@@ -111,18 +119,16 @@ public:
     /** @brief Returns the number of nodes of the element */
     virtual int NConnects() const
     {
-        if (fElementGroup == 0) {
-            return 0;
-        }
-        return fElementGroup->NConnects();
+        return fConnectIndexes.size();   
     }
 
     virtual int64_t ConnectIndex(int i) const
     {
-        if (fElementGroup == 0) {
+        if (i > fConnectIndexes.size())
+        {
             DebugStop();
-        }
-        return fElementGroup->ConnectIndex(i);
+        }        
+        return fConnectIndexes[i];
     }
 
     virtual int Dimension() const

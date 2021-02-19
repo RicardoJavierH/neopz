@@ -9,9 +9,8 @@
 #pragma once
 
 #include <stdio.h>
-
+#include "TPZSBFemVolumeHdiv.h"
 #include "TPZSBFemElementGroup.h"
-#include "TPZSBFemVolume.h"
 
 
 class TPZSBFemMultiphysicsElGroup : public TPZSBFemElementGroup
@@ -33,6 +32,10 @@ public:
     {
         
     }
+
+    void AddElement(TPZCompEl *cel);
+
+    virtual void Print(std::ostream &out) const;
 
     // void GroupandCondense(TPZMultiphysicsCompMesh * cmesh);
 };
