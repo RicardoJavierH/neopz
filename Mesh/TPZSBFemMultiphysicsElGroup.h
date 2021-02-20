@@ -12,13 +12,14 @@
 #include "TPZSBFemVolumeHdiv.h"
 #include "TPZSBFemElementGroup.h"
 
+using namespace std;
 
 class TPZSBFemMultiphysicsElGroup : public TPZSBFemElementGroup
 {
     
 private:
     
-
+    TPZElementGroup * fCondensedEls;
     
 public:
     
@@ -37,5 +38,18 @@ public:
 
     virtual void Print(std::ostream &out) const;
 
-    // void GroupandCondense(TPZMultiphysicsCompMesh * cmesh);
+    void GroupandCondense(set<int> & matidscondensed);
+
+
+    void ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2, TPZElementMatrix &M0);
+    
+    /**
+     * @brief Computes the element stifness matrix and right hand side
+     * @param ek element stiffness matrix
+     * @param ef element load vector
+     */
+    virtual void CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef);
+
+
+    void ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2);
 };

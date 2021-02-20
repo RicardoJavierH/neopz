@@ -25,6 +25,8 @@
 #include "TPZSBFemMultiphysicsElGroup.h"
 #include "TPZSBFemVolumeHdiv.h"
 
+#include "pzcondensedcompel.h"
+
 #ifdef LOG4CXX
 static LoggerPtr logger(Logger::getLogger("pz.mesh.tpzbuildsbfem"));
 #endif
@@ -115,19 +117,57 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
 
     // Adding the interface elements
     AddInterfaceElements(cmeshm, matids1d);
-
-    // Ajusting the connectivity of these elements
-    AdjustExternalPressureConnectivity(cmeshm);
+    {
+        ofstream sout("cmeshmultiphysics");
+        cmeshm.Print(sout);
+    }
 
     // Creating the SBFEMVolumeHdiv elements
-    // delete all elements and connects in the mesh
-    // cmeshm.CleanElementsConnects();
     CreateSBFEMMultiphysicsVol(cmeshm, matids1d, matidstarget);
-    // cmeshm.SetReference(fGMesh);
 
     // Based on the multiphysics mesh, create SBFemElementGroups
     // The SBFemMultiphysicsElGroups = Group of collapsed flux elements (SBFemVolumes) + pressure compels
     // Then, condense the flux into the pressures.
+    
+    CreateSBFEMMultiphysicsElGroups(cmeshm, matidstarget);
+
+#ifdef PZDEBUG
+    {
+        ofstream mout("cmeshmultiphysics.txt");
+        cmeshm.Print(mout);
+    }
+#endif
+    GroupandCondense(cmeshm);
+    cmeshm.ComputeNodElCon();
+    cmeshm.CleanUpUnconnectedNodes();
+
+    auto ElementVec = cmeshm.ElementVec();
+    auto nel = cmeshm.NElements();
+    for (int64_t el = 0; el<nel; el++) {
+        TPZCompEl *cel = cmeshm.Element(el);
+        auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
+        if (sbfemgr)
+        {
+            continue;
+        }
+        auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
+        if (sbfemvol)
+        {
+            continue;
+        }
+        auto sbfemcondensed = dynamic_cast<TPZCondensedCompEl * >(cel);
+        if (sbfemcondensed)
+        {
+            continue;
+        }
+        
+        if(cel)
+        {
+            delete cel;
+            ElementVec[el] = 0;
+        }
+    }
+    cmeshm.InitializeBlock();
 #ifdef PZDEBUG
     ofstream sout("cmeshmultiphysics.txt");
     cmeshm.Print(sout);
@@ -136,34 +176,6 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     ofstream pout("cmeshpressure.txt");
     cmeshpressure->Print(pout);
 #endif
-    CreateSBFEMMultiphysicsElGroups(cmeshm, matidstarget);
-    
-    // auto ElementVec = cmeshm.ElementVec();
-    // auto nel = cmeshm.NElements();
-    // for (int64_t el = 0; el<nel; el++) {
-    //     TPZCompEl *cel = cmeshm.Element(el);
-    //     auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
-    //     if (sbfemgr)
-    //     {
-    //         continue;
-    //     }
-    //     auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
-    //     if (sbfemvol)
-    //     {
-    //         continue;
-    //     }
-        
-    //     if(cel)
-    //     {
-    //         delete cel;
-    //         ElementVec[el] = 0;
-    //     }
-    // }
-
-// #ifdef PZDEBUG
-//     ofstream mout("cmeshmultiphysics.txt");
-//     cmeshm->Print(mout);
-// #endif
 }
 
 // Creates geometric collapsed elements
@@ -344,9 +356,11 @@ void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
     auto matleft = new TPZNullMaterial(fDifpressure, dim, nstate);
     cmeshpressure.InsertMaterialObject(matleft);
 
-    set<int> matids = {fInternal, fDifpressure};
     cmeshpressure.SetAllCreateFunctionsContinuous();
     cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
+    set<int> matids = {fDifpressure};
+    cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
+    matids = {fInternal};
     cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
 
     for(auto newnod : cmeshpressure.ConnectVec())
@@ -601,143 +615,25 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
     }
 }
 
-// For a quadrilateral S-element, the connectivity will be:
-// 8 internal fluxes (3 per side, but with continuity between sides)
-// 8 external fluxes (1 connect left, 1 connect right)
-// 12 internal pressures
-// 12 external pressure left (Differential of the pressure)
-// 12 external pressure right (average pressure)
-// I need to change the connectivity for the external pressure. PZ gives us a connectivity for the external pressure like:
-// (Differential of the pressure | Average pressure)
-// Side 1: 29 30 31 | 32 33 34 
-// Side 2: 35 36 37 | 38 39 40
-// Side 3: 41 42 43 | 44 45 46
-// Side 4: 47 48 49 | 50 51 52
-// But to obtain the adequate connectivity for SBFEM I must have:
-// Side 1: 29 30 31 | 41 42 43
-// Side 2: 32 33 34 | 44 45 46
-// Side 3: 35 36 37 | 47 48 49
-// Side 4: 38 39 40 | 50 51 52
-// Because in the stiffness matrix of the hybrid S-element I must have all connects related to the dif of the pressure 1st,
-// then all connects related to the average pressure, to obtain E0-div, E1-div, E2-div.
-void TPZBuildSBFemHdiv::AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm)
+
+void TPZBuildSBFemHdiv::GroupandCondense(TPZMultiphysicsCompMesh & cmeshm)
 {
-    TPZManVector<int64_t> perm(cmeshm.NConnects());
-    for (auto con : cmeshm.ConnectVec())
-    {
-        if (con.SequenceNumber() == -1)
-        {
-            continue;
-        }
-        perm[con.SequenceNumber()] = con.SequenceNumber();
-    }
     for (auto cel : cmeshm.ElementVec())
     {
         if (!cel)
         {
             continue;
         }
-        auto celgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
-        if (!celgr)
+        auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup *>(cel);
+        if (!sbfemgr)
         {
             continue;
         }
-
-        auto elvec = celgr->GetElGroup();
-        auto nsidess = elvec.size();
-        if (cel->Dimension() != 2)
-        {
-            std::cout << "This code is not working for 3D yet \n";
-            DebugStop();
-        }
-        
-        TPZManVector<int64_t> permlocalleftpr(nsidess*3);
-        TPZManVector<int64_t> permlocalrightpr(nsidess*3);
-        for (auto cel : elvec)
-        {
-#ifdef PZDEBUG
-            if (!cel)
-            {
-                DebugStop();
-            }
-#endif
-            auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
-#ifdef PZDEBUG
-            if (!sbfemvol)
-            {
-                DebugStop();
-            }
-#endif
-            // The vector with the elements will be:
-            // 1. Interface;
-            // 2. fExtrightflux;
-            // 3. fInternal;
-            // 4. fExtleftflux;
-            // 5. fInterface;
-            // 6. fDifPressure;
-            // 7. Skeleton.
-            // I'm interested about the connects of the elements 6 and 7  
-            auto celprleft = sbfemvol->Element(5);
-            auto celprright = sbfemvol->Element(6);
-#ifdef PZDEBUG  
-            if (!celprleft)
-            {
-                DebugStop();
-            }
-            if (!celprright)
-            {
-                DebugStop();
-            }
-#endif
-        }
-        
-        
-        // auto newid = -1;
-        // auto nsides = 4;
-        // auto dim = celgr->Reference()->Dimension();
-
-        // TPZStack<int64_t> internalprcon;
-
-        // auto ncon = celgr->NConnects() - nsides * dim;
-        // perm.resize(ncon);
-
-        // for (auto con : celgr->ConnectVec())
-        // {
-        //     if (con.SequenceNumber() == -1)
-        //     {
-        //         continue;
-        //     }
-        //     perm[con.SequenceNumber()] = con.SequenceNumber();
-        // }
-
-        // int64_t nf = cmeshf->NConnects() - 2*nsides;
-        // auto id = nf+3*nsides;
-
-        // for (int is = 0; is < nsides; is++)
-        // {
-        //     for (int ic = 0; ic < 3; ic++)
-        //     {
-        //         auto pos = nf + 3*nsides + is*6 + ic;
-        //         perm[pos] = id;
-        //         id++;
-        //     }
-        // }
-        // for (int is = 0; is < nsides; is++)
-        // {
-        //     for (int ic = 0; ic < 3; ic++)
-        //     {
-        //         auto pos = nf + 3*nsides + is*6 + ic + 3;
-        //         perm[pos] = id;
-        //         id++;
-        //     }
-        // }
+        sbfemgr->GroupandCondense(fCondensedMatids);
+        cmeshm.ComputeNodElCon();
+        cmeshm.CleanUpUnconnectedNodes();
     }
 }
-
-// void TPZBuildSBFemHdiv::GroupandCondense()
-// {
-//     DebugStop();
-// }
 
 
 void TPZBuildSBFemHdiv::BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh)

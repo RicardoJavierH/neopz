@@ -58,10 +58,8 @@ public:
 
     void CreateSBFEMMultiphysicsElGroups(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget);
 
-    void AdjustExternalPressureConnectivity(TPZMultiphysicsCompMesh & cmeshm);
+    void GroupandCondense(TPZMultiphysicsCompMesh & cmeshm);
 
 // NOT READY YET
     void BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh);
-
-    // void GroupandCondense();
 };
