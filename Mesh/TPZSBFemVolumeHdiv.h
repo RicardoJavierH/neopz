@@ -68,7 +68,12 @@ public:
 
     void AddElement(TPZCompEl * cel, int localindex)
     {
+        // Order of the computational elements: fInterface, fExtfluxleft, fInternal, fExtfluxright,
+        // fInterface, fDifpressure, fSkeleton
+        // fInternal contains fExtfluxleft and fExtfluxtright, so I'll skip elements 1 and 3.
         fElementVec[localindex] = cel;
+        if(localindex == 1 || localindex == 3) return;
+        
         auto ncon = fConnectIndexes.size();
         auto nconcel =cel->NConnects();
         fConnectIndexes.Resize(ncon+nconcel);
@@ -76,7 +81,6 @@ public:
         {
             fConnectIndexes[i+ncon] = cel->ConnectIndex(i);
         }
-        
     }
 
     void SetSkeleton(int64_t skeleton)
@@ -157,6 +161,8 @@ public:
         DebugStop();
     }
 
+    void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef);
+
     virtual TPZIntPoints & GetIntegrationRule() const
     {
         if(!fIntRule) DebugStop();
@@ -236,6 +242,8 @@ public:
     {
         fConnectIndexes = indexes;
     }
+
+    TPZElementMatrix ComputeEKlocal();
 
     // virtual void AffineTransform(TPZVec<TPZTransform<> > &trVec) const
     // {

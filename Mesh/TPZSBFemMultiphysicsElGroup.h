@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include "TPZSBFemVolumeHdiv.h"
 #include "TPZSBFemElementGroup.h"
+#include "pzcondensedcompel.h"
 
 using namespace std;
 
@@ -20,6 +21,8 @@ class TPZSBFemMultiphysicsElGroup : public TPZSBFemElementGroup
 private:
     
     TPZElementGroup * fCondensedEls;
+
+    TPZCondensedCompEl * fCondEl;
     
 public:
     

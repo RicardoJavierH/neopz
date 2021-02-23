@@ -118,7 +118,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     // Adding the interface elements
     AddInterfaceElements(cmeshm, matids1d);
     {
-        ofstream sout("cmeshmultiphysics");
+        ofstream sout("cmeshmultiphysics.txt");
         cmeshm.Print(sout);
     }
 
@@ -138,6 +138,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     }
 #endif
     GroupandCondense(cmeshm);
+    cmeshm.ExpandSolution();
     cmeshm.ComputeNodElCon();
     cmeshm.CleanUpUnconnectedNodes();
 
@@ -462,6 +463,9 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cm
 {
     auto dim = cmeshm.Dimension();
     auto nstate = cmeshm.MaterialVec().begin()->second->NStateVariables();
+
+    auto mat = new TPZNullMaterial(fDifpressure, dim, nstate);
+    cmeshm.InsertMaterialObject(mat);
 
     for (auto matid : fCondensedMatids)    
     {

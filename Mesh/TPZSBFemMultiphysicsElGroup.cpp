@@ -7,7 +7,6 @@
 //
 #include "TPZSBFemMultiphysicsElGroup.h"
 #include "TPZMultiphysicsCompMesh.h"
-#include "pzcondensedcompel.h"
 #include "pzmaterialdata.h"
 
 void TPZSBFemMultiphysicsElGroup::AddElement(TPZCompEl *cel)
@@ -76,7 +75,7 @@ void TPZSBFemMultiphysicsElGroup::Print(std::ostream &out) const
 void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
 {
 #ifdef PZDEBUG
-    if (fElGroup.size() == 0 || condensedmatid.size() != 4)
+    if (fElGroup.size() == 0 || condensedmatid.size() != 3)
     {
         DebugStop();
     }
@@ -112,13 +111,16 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
             }
             fCondensedEls->AddElement(cel);
         }
-
     }
-    Mesh()->ComputeNodElCon();
+    // comp el pressure -> set node el con
+
+    // Mesh()->ComputeNodElCon();
 
     bool keepmatrix = false;
-    auto cond = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
-    Mesh()->ExpandSolution();
+    fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
+
+    // verificacao: imprimir em um log, pegar connectindexes do cond
+    // pegar ultima versao no refactorgeom
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
@@ -132,104 +134,19 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
 
 void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2)
 {
-    TPZElementMatrix eklocal, eflocal;
-    for (auto cel : fElGroup)
-    {
-#ifdef PZDEBUG
-        if (!cel)
-        {
-            DebugStop();
-        }
-#endif
-        auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
-#ifdef PZDEBUG
-        if (!sbfemvol)
-        {
-            DebugStop();
-        }
-#endif
-        TPZMaterial * material = sbfemvol->Material();
-#ifdef PZDEBUG
-        if(!material){
-            PZError << "Error at " << __PRETTY_FUNCTION__ << " this->Material() == NULL\n";
-            eklocal.Reset();
-            eflocal.Reset();
-            return;
-        }
-#endif
-        
-        InitializeElementMatrix(eklocal, eflocal);
-        
-        // TPZManVector<TPZMaterialData,6> datavec;
-
-        // auto ElementVec = sbfem->ElementVec();
-        // const int64_t nref = ElementVec.size();
-
-        // datavec.resize(nref);
-        // InitMaterialData(datavec);
-        
-        // TPZManVector<TPZTransform<> > trvec;
-        // AffineTransform(trvec);
-        
-        // int dim = Dimension();
-        // TPZAutoPointer<TPZIntPoints> intrule;
-        
-        // TPZManVector<REAL,4> intpointtemp(TGeometry::Dimension,0.);
-        // REAL weight = 0.;
-        
-        // TPZManVector<int,4> ordervec;
-        // //ordervec.resize(nref);
-        // for (int64_t iref=0;  iref<nref; iref++)
-        // {
-        //     TPZInterpolationSpace *msp  = dynamic_cast <TPZInterpolationSpace *>(fElementVec[iref].Element());
-        //     int svec;
-        //     if(msp)
-        //     {
-        //         ordervec.Resize(ordervec.size()+1);
-        //         svec = ordervec.size();
-        //     }
-        //     else
-        //     {
-        //         continue;
-        //     }
-        //     datavec[iref].p = msp->MaxOrder();
-        //     ordervec[svec-1] = datavec[iref].p;
-        // }
-        // int order = material->IntegrationRuleOrder(ordervec);
-        
-        // TPZGeoEl *ref = this->Reference();
-        // intrule = ref->CreateSideIntegrationRule(ref->NSides()-1, order);
-        
-        // TPZManVector<int,4> intorder(dim,order);
-        // intrule->SetOrder(intorder);
-        // int intrulepoints = intrule->NPoints();
-        // if(intrulepoints > 1000) {
-        //     DebugStop();
-        // }
-        
-        // TPZFMatrix<REAL> jac, axe, jacInv;
-        // REAL detJac;
-        // for(int int_ind = 0; int_ind < intrulepoints; ++int_ind)
-        // {
-        //     intrule->Point(int_ind,intpointtemp,weight);
-        //     ref->Jacobian(intpointtemp, jac, axe, detJac , jacInv);
-        //     weight *= fabs(detJac);
-        //     for (int i = 0; i < fElementVec.size(); i++) {
-        //         TPZInterpolationSpace *msp  = dynamic_cast <TPZInterpolationSpace *>(fElementVec[i].Element());
-        //         if (!msp) {
-        //             continue;
-        //         }
-        //         datavec[i].intLocPtIndex = int_ind;
-        //     }
-            
-        //     this->ComputeRequiredData(intpointtemp,trvec,datavec);
-            
-        //     material->Contribute(datavec,weight,ek.fMat,ef.fMat);
-        // }//loop over integration points
-        
-        // CleanupMaterialData(datavec);
-
-    }
+    TPZElementMatrix ek(Mesh(),TPZElementMatrix::EK);
+    TPZElementMatrix ef(Mesh(),TPZElementMatrix::EF);
+    fCondEl->CalcStiff(ek,ef);
     
+    auto n = ek.fMat.Rows()/2;
+    for (int i = 0; i < n; i++)
+    {
+        for (int j = 0; j < n; j++)
+        {
+            E0.fMat(i,j) = ek.fMat(i,j)*1/4;
+            E1.fMat(i,j) = ek.fMat(i+n,j)*1/2;
+            E2.fMat(i,j) = ek.fMat(i+n,j+n);
+        }
+    }
 
 }

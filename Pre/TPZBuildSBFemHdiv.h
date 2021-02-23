@@ -33,7 +33,7 @@ public:
         fExternalleftflux = fInterface +1;
         fInternal = fExternalleftflux+1;
         fExternalrightflux = fInternal+1;
-        fCondensedMatids = {fDifpressure, fExternalleftflux, fInternal, fExternalrightflux};
+        fCondensedMatids = {fExternalleftflux, fInternal, fExternalrightflux};
     }
 
     int GetSideSkeletonEl(TPZGeoEl * gel);

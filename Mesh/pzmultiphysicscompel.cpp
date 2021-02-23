@@ -775,6 +775,7 @@ void TPZMultiphysicsCompEl<TGeometry>::CalcStiff(TPZElementMatrix &ek, TPZElemen
             continue;
         }
         datavec[iref].p = msp->MaxOrder();
+        datavec[iref].fNeedsSol = false;
         ordervec[svec-1] = datavec[iref].p;
     }
     int order = material->IntegrationRuleOrder(ordervec);
