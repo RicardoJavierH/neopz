@@ -46,7 +46,7 @@ public:
 
     void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget);
 
-    void CreateCompElPressure(TPZCompMesh & cmeshpressure);
+    void CreateCompElPressure(TPZCompMesh & cmeshpressure, set<int> & matids1d);
 
     void CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget);
 

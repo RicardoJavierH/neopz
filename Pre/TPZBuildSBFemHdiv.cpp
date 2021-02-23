@@ -26,6 +26,7 @@
 #include "TPZSBFemVolumeHdiv.h"
 
 #include "pzcondensedcompel.h"
+#include "pzgeoelbc.h"
 
 #ifdef LOG4CXX
 static LoggerPtr logger(Logger::getLogger("pz.mesh.tpzbuildsbfem"));
@@ -103,7 +104,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     // At this point the code created all geometric elements needed for ther SBFEM simulation and it's stored in fGMesh
     // Here it's created the SBFemVolumeHdiv elements -> CompElHdivElement -> Adjust connectivities
     // But firstly the atomic meshes must be properly created
-    CreateCompElPressure(*cmeshpressure);
+    CreateCompElPressure(*cmeshpressure, matids1d);
     CreateCompElFlux(*cmeshflux, matidstarget);
 
     // Then, creating the multiphysics mesh
@@ -334,18 +335,35 @@ void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & ma
         auto iside = GetSideCollapsedEl(gel);
         
         TPZGeoElBC(gel, iside, fDifpressure); // "External" pressure - physically the derivative of the pressure
-        TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
+        // TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
         TPZGeoElBC(gel, iside, fExternalleftflux); // HdivBound
         TPZGeoElBC(gel, iside, fInternal); // Hdiv + Internal pressure
         TPZGeoElBC(gel, iside, fExternalrightflux); // HdivBound
-        TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
+        // TPZGeoElBC(gel, iside, fInterface); // TPZMultiphysicsInterface
         // fSkeleton will be the external pressures
     }
 }
 
 // 
-void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
+void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure, set<int> & matids1d)
 {
+
+    int64_t nel = cmeshpressure.NElements();
+    for (int64_t el = 0; el<nel; el++) {
+        TPZCompEl *cel = cmeshpressure.Element(el);
+        if(cel)
+        {
+            delete cel;
+            cmeshpressure.ElementVec()[el] = 0;
+        }
+    }
+    cmeshpressure.ElementVec().Resize(0);
+    nel = cmeshpressure.ConnectVec().NElements();
+    for (int64_t el=0; el<nel; el++) {
+        cmeshpressure.ConnectVec()[el].RemoveDepend();
+    }
+    cmeshpressure.ConnectVec().Resize(0);
+
     auto dim = cmeshpressure.Dimension()-1; // materials with dim-1 dimensional elements
     auto nstate = cmeshpressure.MaterialVec().begin()->second->NStateVariables();
 
@@ -359,10 +377,13 @@ void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure)
 
     cmeshpressure.SetAllCreateFunctionsContinuous();
     cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
-    set<int> matids = {fDifpressure};
+    set<int> matids = {fInternal};
     cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
-    matids = {fInternal};
+    matids = {fDifpressure};
     cmeshpressure.AutoBuild(matids); // BCs and fSkeleton elements have already built
+    
+
+    cmeshpressure.AutoBuild(matids1d); // BCs and fSkeleton elements have already built
 
     for(auto newnod : cmeshpressure.ConnectVec())
     {
@@ -402,7 +423,6 @@ void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & mati
 
         auto gel1dside = gelcollapsedside.Neighbour(); // fInterface
         gel1dside = gel1dside.Neighbour(); // fExtrightflux
-        gel1dside = gel1dside.Neighbour(); // fInternal
 
         auto gel1d = gel1dside.Element();
 
@@ -414,9 +434,13 @@ void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & mati
         int64_t index;
         auto celhdivc = new TPZCompElHDivSBFem<pzshape::TPZShapeLinear>(cmeshflux, gel1d, gelcollapsedside, index);
         geltocel[gel1d->Index()] = celhdivc;
-        cmeshflux.ExpandSolution();
-        cmeshflux.Reference()->ResetReference();
+        // cmeshflux.ExpandSolution();
+        // cmeshflux.Reference()->ResetReference();
     }
+    cmeshflux.SetDimModel(fGMesh->Dimension());
+    cmeshflux.ApproxSpace().SetAllCreateFunctionsHDiv(fGMesh->Dimension());
+    cmeshflux.ExpandSolution();
+    cmeshflux.Reference()->ResetReference();
     
     // Now setting the geoelement for the HdivBound
     // Order of the neighbours:
@@ -457,6 +481,9 @@ void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & mati
     cmeshflux.Reference()->ResetReference();
     cmeshflux.CleanUpUnconnectedNodes();
     cmeshflux.ExpandSolution();
+
+    ofstream sout("cmeshflux0.txt");
+    cmeshflux.Print(sout);
 }
 
 void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cmeshm)
@@ -496,27 +523,28 @@ void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm, s
         auto side = GetSideSkeletonEl(gel);
         TPZGeoElSide gelside(gel,side); // gelside for the external pressure
 
-        auto gelsideint = gelside.Neighbour();
-        auto matidinterface = gelsideint.Element()->MaterialId();
-        while (matidinterface != fInterface)
+        auto gelsiderightf = gelside.Neighbour();
+        auto matidrightflux = gelsiderightf.Element()->MaterialId();
+        while (matidrightflux != fExternalrightflux)
         {
-            gelsideint = gelsideint.Neighbour();
-            matidinterface = gelsideint.Element()->MaterialId();
+            gelsiderightf = gelsiderightf.Neighbour();
+            matidrightflux = gelsiderightf.Element()->MaterialId();
         }
 
-        auto gelsiderightf = gelsideint.Neighbour();
-        auto matidrightflux = gelsiderightf.Element()->MaterialId();
-        if (matidrightflux != fExternalrightflux)
-        {
-            DebugStop();
-        }
+        // auto gelsiderightf = gelsideint.Neighbour();
+        // auto matidrightflux = gelsiderightf.Element()->MaterialId();
+        // if (matidrightflux != fExternalrightflux)
+        // {
+        //     DebugStop();
+        // }
         TPZCompElSide celside = gelside.Reference();
         TPZCompElSide celsiderightf = gelsiderightf.Reference();
         if (!celside || !celsiderightf) {
             DebugStop();
         }
+        TPZGeoElBC gelbc(gelside, fInterface);
         int64_t index;
-        TPZMultiphysicsInterfaceElement *intl = new TPZMultiphysicsInterfaceElement(cmeshm, gelsideint.Element(),index,celsiderightf,celside);
+        TPZMultiphysicsInterfaceElement *intl = new TPZMultiphysicsInterfaceElement(cmeshm, gelbc.CreatedElement(),index,celsiderightf,celside);
 
         auto gelsideinternal = gelsiderightf.Neighbour(); // Next neighbour will be internal
         auto gelsideleftf = gelsideinternal.Neighbour(); // Next neighbour will be flux left
@@ -524,12 +552,7 @@ void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm, s
         {
             DebugStop();
         }
-        gelsideint = gelsideleftf.Neighbour(); // the neighbour of the right flux must be the interface again
-        if (!gelsideint || gelsideint.Element()->MaterialId() != fInterface)
-        {
-            DebugStop();
-        }
-        auto gelsidepr = gelsideint.Neighbour(); // Next neighbour will be the internal pressure (dif. of pressure)
+        auto gelsidepr = gelsideleftf.Neighbour(); // Next neighbour will be the internal pressure (dif. of pressure)
         if (!gelsidepr || gelsidepr.Element()->MaterialId() != fDifpressure)
         {
             DebugStop();
@@ -539,7 +562,8 @@ void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm, s
         if (!celsidepr || !celsideleftf) {
             DebugStop();
         }
-        TPZMultiphysicsInterfaceElement *intr = new TPZMultiphysicsInterfaceElement(cmeshm, gelsideint.Element(),index,celsideleftf,celsidepr);
+        TPZGeoElBC gelbc2(gelsideleftf, fInterface);
+        TPZMultiphysicsInterfaceElement *intr = new TPZMultiphysicsInterfaceElement(cmeshm, gelbc2.CreatedElement(),index,celsidepr,celsideleftf);
         
     }
 }
@@ -616,6 +640,7 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
                 DebugStop();
             }   
         }
+        sbfem->Print(cout);
     }
 }
 
@@ -654,7 +679,7 @@ int TPZBuildSBFemHdiv::GetSideSkeletonEl(TPZGeoEl * gel)
     switch (gel->Type())
     {
     case EOned:
-        side = 3;
+        side = 2;
         break;
     case ETriangle:
         side = 6;

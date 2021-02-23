@@ -75,7 +75,7 @@ void TPZSBFemMultiphysicsElGroup::Print(std::ostream &out) const
 void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
 {
 #ifdef PZDEBUG
-    if (fElGroup.size() == 0 || condensedmatid.size() != 3)
+    if (fElGroup.size() == 0 || condensedmatid.size() == 0)
     {
         DebugStop();
     }
@@ -115,9 +115,10 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
     // comp el pressure -> set node el con
 
     // Mesh()->ComputeNodElCon();
-
     bool keepmatrix = false;
     fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
+    this->Print(cout);
+    fCondEl->Print(cout);
 
     // verificacao: imprimir em um log, pegar connectindexes do cond
     // pegar ultima versao no refactorgeom
@@ -136,7 +137,9 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
 {
     TPZElementMatrix ek(Mesh(),TPZElementMatrix::EK);
     TPZElementMatrix ef(Mesh(),TPZElementMatrix::EF);
-    fCondEl->CalcStiff(ek,ef);
+    // Need to create a calcstiff inside SBFemVolume and set a condensed element there?
+    // ek using the correct mutiphysics element (with matid Emat1) instead of using the NullMaterial/Skeleton.
+    fCondEl->CalcStiff(ek,ef); 
     
     auto n = ek.fMat.Rows()/2;
     for (int i = 0; i < n; i++)

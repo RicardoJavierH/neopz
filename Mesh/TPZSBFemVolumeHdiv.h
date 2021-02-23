@@ -73,7 +73,7 @@ public:
         // fInternal contains fExtfluxleft and fExtfluxtright, so I'll skip elements 1 and 3.
         fElementVec[localindex] = cel;
         if(localindex == 1 || localindex == 3) return;
-        
+
         auto ncon = fConnectIndexes.size();
         auto nconcel =cel->NConnects();
         fConnectIndexes.Resize(ncon+nconcel);
@@ -161,8 +161,6 @@ public:
         DebugStop();
     }
 
-    void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef);
-
     virtual TPZIntPoints & GetIntegrationRule() const
     {
         if(!fIntRule) DebugStop();
@@ -242,8 +240,6 @@ public:
     {
         fConnectIndexes = indexes;
     }
-
-    TPZElementMatrix ComputeEKlocal();
 
     // virtual void AffineTransform(TPZVec<TPZTransform<> > &trVec) const
     // {

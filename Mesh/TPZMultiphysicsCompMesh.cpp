@@ -243,15 +243,15 @@ void TPZMultiphysicsCompMesh::AddElements(){
             }
             if(ncontained == 0)
             {
-                TPZGeoEl *gel = cel->Reference();
-                std::cout << "Multiphysics element " << icel << " with matid " <<
-                    gel->MaterialId() << " does not refer to any elements "
-                << " geometric index " << gel->Index() << std::endl;
-                TPZCompMesh *flux = this->m_mesh_vector[0];
-                fReference->ResetReference();
-                flux->LoadReferences();
-                std::cout << "Flux reference " << (void *) gel->Reference() << std::endl;
-                DebugStop();
+                // TPZGeoEl *gel = cel->Reference();
+                // std::cout << "Multiphysics element " << icel << " with matid " <<
+                //     gel->MaterialId() << " does not refer to any elements "
+                // << " geometric index " << gel->Index() << std::endl;
+                // TPZCompMesh *flux = this->m_mesh_vector[0];
+                // fReference->ResetReference();
+                // flux->LoadReferences();
+                // std::cout << "Flux reference " << (void *) gel->Reference() << std::endl;
+                // DebugStop();
             }
         }
 #endif
