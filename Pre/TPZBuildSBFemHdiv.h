@@ -15,7 +15,7 @@ using namespace std;
 
 class TPZBuildSBFemHdiv : public TPZBuildSBFem
 {
-    int fDifpressure, fInterface, fExternalleftflux, fInternal, fExternalrightflux;
+    int fDifPressure, fInterface, fLeftFlux, fRightFlux, fAverPressure;
 
     set<int> fCondensedMatids;
 
@@ -28,12 +28,16 @@ public:
     /// simple constructor
     TPZBuildSBFemHdiv(TPZAutoPointer<TPZGeoMesh> &gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
-        fDifpressure = fSkeletonMatId + 1;
-        fInterface = fDifpressure +1;
-        fExternalleftflux = fInterface +1;
-        fInternal = fExternalleftflux+1;
-        fExternalrightflux = fInternal+1;
-        fCondensedMatids = {fExternalleftflux, fInternal, fExternalrightflux};
+        fDifPressure = fSkeletonMatId + 1;
+
+        fInterface = fDifPressure +1;
+        
+        fLeftFlux = fInterface +1;
+        fRightFlux = fLeftFlux+1;
+        
+        fAverPressure = fRightFlux+1;
+        
+        fCondensedMatids = {fLeftFlux, fInterface, fSkeletonMatId, fRightFlux};
     }
 
     int GetSideSkeletonEl(TPZGeoEl * gel);

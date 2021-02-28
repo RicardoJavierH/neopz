@@ -322,6 +322,8 @@ void TPZCondensedCompEl::CalcStiff(TPZElementMatrix &ekglob,TPZElementMatrix &ef
     TPZElementMatrix ek, ef;
     
     fReferenceCompEl->CalcStiff(ek,ef);
+    std::ofstream sout("stiffnessmatrix.txt");
+    ek.fMat.Print("ekglob = ", sout, EMathematicaInput);
 #ifdef LOG4CXX
     if (logger->isDebugEnabled()) {
         std::stringstream sout;
