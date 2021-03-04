@@ -252,7 +252,7 @@ void TPZBuildSBFem::CreateElementCenterNodes(TPZVec<int64_t> &elindices)
         gel->CenterPoint(nsides-1,xicenter);
         gel->X(xicenter,xcenter);
         int64_t middlenode = fGMesh->NodeVec().AllocateNewElement();
-        fGMesh->NodeVec()[middlenode].Initialize(xcenter,fGMesh);
+        fGMesh->NodeVec()[middlenode].Initialize(xcenter,*fGMesh);
         fPartitionCenterNode[count] = middlenode;
         fElementPartition[elindices[el]] = count;
         count++;

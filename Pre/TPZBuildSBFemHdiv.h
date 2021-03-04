@@ -15,7 +15,7 @@ using namespace std;
 
 class TPZBuildSBFemHdiv : public TPZBuildSBFem
 {
-    int fDifPressure, fInterface, fLeftFlux, fRightFlux, fAverPressure;
+    int fDifPressure, fInterface, fLeftFlux, fRightFlux, fAverPressure, fBC;
 
     set<int> fCondensedMatids;
 
@@ -26,7 +26,7 @@ class TPZBuildSBFemHdiv : public TPZBuildSBFem
 public:
     
     /// simple constructor
-    TPZBuildSBFemHdiv(TPZAutoPointer<TPZGeoMesh> &gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
+    TPZBuildSBFemHdiv(TPZGeoMesh * gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
         fDifPressure = fSkeletonMatId + 1;
 
@@ -52,7 +52,7 @@ public:
 
     void CreateCompElPressure(TPZCompMesh & cmeshpressure, set<int> & matids1d);
 
-    void CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget);
+    void CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget, set<int> & matid1d);
 
     void CreateSBFEMMultiphysicsMesh(TPZMultiphysicsCompMesh & cmeshm);
 

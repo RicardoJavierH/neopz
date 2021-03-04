@@ -21,7 +21,7 @@ class TPZBuildSBFem
 protected:
 
     /// geometric mesh
-    TPZAutoPointer<TPZGeoMesh> fGMesh;
+    TPZGeoMesh * fGMesh;
     
     /// The volumetric elements with Mat Id will spawn SBFemVolume elements with MatId
     std::map<int,int> fMatIdTranslation;
@@ -38,7 +38,7 @@ protected:
 public:
     
     /// simple constructor
-    TPZBuildSBFem(TPZAutoPointer<TPZGeoMesh> gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : fGMesh(gmesh), fMatIdTranslation(matidtranslation), fSkeletonMatId(skeletonmatid)
+    TPZBuildSBFem(TPZGeoMesh * gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : fGMesh(gmesh), fMatIdTranslation(matidtranslation), fSkeletonMatId(skeletonmatid)
     {
         fElementPartition.resize(fGMesh->NElements());
         fElementPartition.Fill(-1);
