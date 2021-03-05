@@ -87,7 +87,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
             }
         }
     }
-    cmeshpressure->ApproxSpace().CreateDisconnectedElements(false);
+    cmeshpressure->ApproxSpace().CreateDisconnectedElements(true);
     cmeshpressure->AutoBuild(matids1d);
 #ifdef PZDEBUG
     if(1)
@@ -104,7 +104,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     // The updated mesh will be fGMesh
     // But the comp mesh used must be cmeshpressure because the connectivity of the multiphysics mesh
     // hasn't been created yet.
-    CreateCollapsedGeoEls(*cmeshpressure, matidstarget);
+    CreateCollapsedGeoEls(*cmeshpressure, matidstarget, matids1d);
 #ifdef PZDEBUG
     if(1)
     {
@@ -113,8 +113,6 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     }
 #endif
     
-    cmeshpressure->ApproxSpace().CreateDisconnectedElements(true);
-    cmeshpressure->AutoBuild(matids1d);
     cmeshm.SetReference(fGMesh);
 
     // Creating dim-1 elements: External flux and external pressure.
@@ -180,7 +178,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
 #endif
 
     // auto ElementVec = cmeshm.ElementVec();
-    // nel = cmeshm.NElements();
+    // auto nel = cmeshm.NElements();
     // for (int64_t el = 0; el<nel; el++) {
     //     TPZCompEl *cel = cmeshm.Element(el);
     //     auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
@@ -216,7 +214,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
 }
 
 // Creates geometric collapsed elements
-void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget)
+void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget, set<int> & matids1d)
 {
     // all computational elements for internal DOFs have been loaded for flux and pressure meshes
     set<int> matids;
@@ -230,10 +228,9 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
         }
     }
 
-    // fGMesh = gmesh for the multiphysics mesh
     // Creating geometric collapsed elements for the multiphysics mesh based on the pressure mesh
-    auto dim = fGMesh->Dimension();
     auto gmeshpressure = cmeshpressure.Reference();
+    auto dim = gmeshpressure->Dimension();
 
     for (auto gelpressure : gmeshpressure->ElementVec())
     {
@@ -260,19 +257,32 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
             {
                 continue;
             }
-            TPZStack<TPZCompElSide> celstack;
+            // TPZStack<TPZCompElSide> celstack;
             TPZGeoElSide gelside(gelpressure,is);
-            bool onlyinterpolated = false;
-            bool removeduplicates = true;
+
+            auto subgelside = gelside.Neighbour();
+            auto it = matids1d.find(subgelside.Element()->MaterialId());
+            while (subgelside != gelside)
+            {
+                if (it != matids1d.end()) break;
+                subgelside = subgelside.Neighbour();
+                it = matids1d.find(subgelside.Element()->MaterialId());
+            }
+            
+            // if(it != matids1d.end())
+            {
+
+            // bool onlyinterpolated = false;
+            // bool removeduplicates = true;
             // we identify all computational elements connected to this geometric element side
-            gelside.EqualorHigherCompElementList2(celstack, onlyinterpolated, removeduplicates);
+            // gelside.EqualorHigherCompElementList2(celstack, onlyinterpolated, removeduplicates);
 
             // we create a volume element based on all smaller elements linked to this side
-            for (auto icelstack : celstack)
-            {
+            // for (auto icelstack : celstack)
+            // {
                 // Creating Duffy elements:
                 int64_t index;
-                TPZGeoElSide subgelside = icelstack.Reference();
+                // TPZGeoElSide subgelside = icelstack.Reference();
                 if (subgelside.Dimension() != dim-1)
                 {
                     continue;
@@ -407,9 +417,6 @@ void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure, set<int
     auto matright = new TPZNullMaterial(fAverPressure, dim, nstate);
     cmeshpressure.InsertMaterialObject(matright);
 
-    cmeshpressure.SetAllCreateFunctionsContinuous();
-    cmeshpressure.ApproxSpace().CreateDisconnectedElements(true);
-
     // ORDERING ELEMENTS
 
     // 1st. Internal connects
@@ -427,6 +434,12 @@ void TPZBuildSBFemHdiv::CreateCompElPressure(TPZCompMesh &cmeshpressure, set<int
     {
         newnod.SetLagrangeMultiplier(1);
     }
+
+#ifdef PZDEBUG
+    ofstream pout("cmeshpressure.txt");
+    cmeshpressure.Print(pout);
+#endif
+
 }
 
 void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget, set<int> & matid1d)
@@ -470,9 +483,9 @@ void TPZBuildSBFemHdiv::CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & mati
         int64_t index;
         auto celhdivc = new TPZCompElHDivSBFem<pzshape::TPZShapeLinear>(cmeshflux, gel1d, gelsidecollapsed, index);
         geltocel[gel1d->Index()] = celhdivc;
+    }
         cmeshflux.ExpandSolution();
         cmeshflux.Reference()->ResetReference();
-    }
 
     // Now setting the geoelement for the HdivBound
     for (auto gelleft : fGMesh->ElementVec())
@@ -725,24 +738,9 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
                 }
             }
         }
-        
-        // sbfem->AddElement(cel1d, 0);
-
-        // for (auto i = 1; i < 7; i++)
-        // {
-        //     neigh = neigh.Neighbour();
-        //     gel1d = neigh.Element();
-        //     if(!gel1d || !(gel1d->Reference()))
-        //     {
-        //         DebugStop();
-        //     }
-        //     cel1d = gel1d->Reference();
-        //     sbfem->AddElement(cel1d, i);
-        // }
         sbfem->Print(cout);
     }
 }
-
 
 void TPZBuildSBFemHdiv::GroupandCondense(TPZMultiphysicsCompMesh & cmeshm)
 {

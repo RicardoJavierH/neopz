@@ -80,6 +80,7 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
         DebugStop();
     }
 #endif
+    this->Print(std::cout);
     int64_t index;
     fCondensedEls = new TPZElementGroup(*Mesh(), index);
 
@@ -251,7 +252,7 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
     {
         for (int j = 0; j < n; j++)
         {
-            E0.fMat(i,j) = ek.fMat(i,j)*1/4;
+            E0.fMat(i,j) = ek.fMat(i,j)*data.detjac*1/4;
             E1.fMat(i,j) = ek.fMat(i+n,j)*1/2;
             E2.fMat(i,j) = ek.fMat(i+n,j+n);
         }

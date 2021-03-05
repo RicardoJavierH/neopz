@@ -48,7 +48,7 @@ public:
 
     void CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget);
 
-    void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget);
+    void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget, set<int> & matids1d);
 
     void CreateCompElPressure(TPZCompMesh & cmeshpressure, set<int> & matids1d);
 
