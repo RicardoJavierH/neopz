@@ -1341,6 +1341,15 @@ int TPZMultiphysicsCompEl<TGeometry>::ClassId() const{
     return Hash("TPZMultiphysicsCompEl") ^ TPZMultiphysicsElement::ClassId() << 1 ^ TGeometry().ClassId() << 2;
 }
 
+template<class TGeometry>
+void TPZMultiphysicsCompEl<TGeometry>::BuildCornerConnectList(std::set<int64_t> &connectindexes) const
+{
+    int ncorner = TGeometry::NNodes;
+    for (int ic = 0; ic < ncorner; ic++) {
+        connectindexes.insert(ConnectIndex(ic));
+    }
+}
+
 #include "pzgraphel.h"
 #include "pzgraphelq2dd.h"
 #include "pzgraphelq3dd.h"

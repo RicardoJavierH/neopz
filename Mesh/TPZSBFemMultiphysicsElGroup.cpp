@@ -80,7 +80,6 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
         DebugStop();
     }
 #endif
-    this->Print(std::cout);
     int64_t index;
     fCondensedEls = new TPZElementGroup(*Mesh(), index);
 
@@ -139,14 +138,8 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
         
     }
     
-    
-    // comp el pressure -> set node el con
-    fCondensedEls->Print(std::cout);
     bool keepmatrix = false;
     fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
-
-    // verificacao: imprimir em um log, pegar connectindexes do cond
-    // pegar ultima versao no refactorgeom
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
@@ -228,14 +221,129 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
         globmat(i+n,i+n) += (dim-2)*0.5;
     }
     
+    
+    static pthread_mutex_t mutex_serial = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&mutex_serial);
+
     TPZFMatrix<STATE> globmatkeep(globmat);
     TPZFMatrix<complex<double> > eigenVectors;
     TPZManVector<complex<double> > eigenvalues;
     globmatkeep.SolveEigenProblem(eigenvalues, eigenVectors);
-
     cout << eigenvalues << "\n";
+    
+    pthread_mutex_unlock(&mutex_serial);
+        
+    TPZFNMatrix<200,std::complex<double> > QVectors(n,n,0.);
+    fPhi.Resize(n, n);
+    TPZManVector<std::complex<double> > eigvalsel(n,0);
+    TPZFMatrix<std::complex<double> > eigvecsel(2*n,n,0.),eigvalmat(1,n,0.);
+    int count = 0;
+    for (int i=0; i<2*n; i++) {
+        if (eigenvalues[i].real() < -1.e-6) {
+            double maxvaleigenvec = 0;
+            for (int j=0; j<n; j++) {
+                QVectors(j,count) = eigenVectors(j+n,i);
+                eigvecsel(j,count) = eigenVectors(j,i);
+                eigvecsel(j+n,count) = eigenVectors(j+n,i);
+                fPhi(j,count) = eigenVectors(j,i);
+                double realvalabs = fabs(fPhi(j,count).real());
+                if (realvalabs > maxvaleigenvec) {
+                    maxvaleigenvec = realvalabs;
+                }
+            }
+            eigvalsel[count] = eigenvalues[i];
+            eigvalmat(0,count) = eigenvalues[i];
+            for (int j=0; j<n; j++) {
+                QVectors(j,count) /= maxvaleigenvec;
+                eigvecsel(j,count) /= maxvaleigenvec;
+                eigvecsel(j+n,count) /= maxvaleigenvec;
+                fPhi(j,count) /= maxvaleigenvec;
 
+            }
+            count++;
+        }
+    }
 
+    if (dim == 2)
+    {
+        int nstate = Connect(0).NState();
+        if (nstate != 2 && nstate != 1) {
+            DebugStop();
+        }
+        if(count != n-nstate) {
+            DebugStop();
+        }
+        int ncon = fConnectIndexes.size();
+        int eq=0;
+        std::set<int64_t> cornercon;
+        BuildCornerConnectList(cornercon);
+        for (int ic=0; ic<ncon; ic++) {
+            int64_t conindex = ConnectIndex(ic);
+            if (cornercon.find(conindex) != cornercon.end())
+            {
+                fPhi(eq,count) = 1;
+                eigvecsel(eq,count) = 1;
+                if (nstate == 2)
+                {
+                    fPhi(eq+1,count+1) = 1;
+                    eigvecsel(eq+1,count+1) = 1;
+                }
+            }
+            eq += Connect(ic).NShape()*Connect(ic).NState();
+        }
+    }
+    if(dim==3 && count != n)
+    {
+        DebugStop();
+    }
+    fEigenvalues = eigvalsel;
+        
+    TPZFMatrix<std::complex<double> > phicopy(fPhi);
+    fPhiInverse.Redim(n, n);
+    fPhiInverse.Identity();
+    
+    try
+    {
+        TPZVec<int> pivot;
+        phicopy.Decompose_LU(pivot);
+        phicopy.Substitution(&fPhiInverse, pivot);
+    }
+    catch(...)
+    {
+        exit(-1);
+    }
+
+    TPZFMatrix<std::complex<double> > ekloc;
+    QVectors.Multiply(fPhiInverse, ekloc);
+    if(0)
+    {
+        std::ofstream out("EigenProblem.nb");
+        globmatkeep.Print("matrix = ",out,EMathematicaInput);
+        eigvecsel.Print("eigvec =",out,EMathematicaInput);
+        eigvalmat.Print("lambda =",out,EMathematicaInput);
+        fPhi.Print("phi = ",out,EMathematicaInput);
+        fPhiInverse.Print("phiinv = ",out,EMathematicaInput);
+        QVectors.Print("qvec = ",out,EMathematicaInput);
+    }
+    
+    TPZFMatrix<double> ekimag(ekloc.Rows(),ekloc.Cols());
+    for (int i=0; i<ekloc.Rows(); i++) {
+        for (int j=0; j<ekloc.Cols(); j++) {
+            ek.fMat(i,j) = ekloc(i,j).real();
+            ekimag(i,j) = ekloc(i,j).imag();
+        }
+    }
+    
+    for (auto cel : fElGroup)
+    {
+        TPZSBFemVolumeHdiv *sbfem = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+#ifdef PZDEBUG
+        if (!sbfem) {
+            DebugStop();
+        }
+#endif
+        // sbfem->SetPhiEigVal(fPhi, fEigenvalues);
+    }
 }
 
 void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2)
@@ -252,7 +360,7 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
     {
         for (int j = 0; j < n; j++)
         {
-            E0.fMat(i,j) = ek.fMat(i,j)*data.detjac*1/4;
+            E0.fMat(i,j) = ek.fMat(i,j)*1/4;
             E1.fMat(i,j) = ek.fMat(i+n,j)*1/2;
             E2.fMat(i,j) = ek.fMat(i+n,j+n);
         }

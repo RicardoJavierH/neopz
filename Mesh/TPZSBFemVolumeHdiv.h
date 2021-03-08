@@ -179,7 +179,14 @@ public:
 
     virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const
     {
-        DebugStop();
+        if (fSkeleton == -1) {
+            DebugStop();
+        }
+        fElementVec[6]->BuildCornerConnectList(connectindexes);
+        // int ncorner = fElementVec[6]->NCornerConnects();
+        // for (int ic = 0; ic < ncorner; ic++) {
+        //     connectindexes.insert(fElementVec[6]->ConnectIndex(ic));
+        // }
     }
 
     virtual int NSideConnects(int iside) const

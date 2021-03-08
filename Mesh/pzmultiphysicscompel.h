@@ -337,6 +337,9 @@ public:
 	virtual int NumberOfCompElementsInsideThisCompEl() override {
 		return fElementVec.NElements();
 	}	
+
+	virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const;
+	
     public:
 virtual int ClassId() const override;
 

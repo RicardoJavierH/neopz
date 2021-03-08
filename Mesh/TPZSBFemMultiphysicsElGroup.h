@@ -24,6 +24,15 @@ private:
 
     TPZCondensedCompEl * fCondEl;
     
+    /// Matrix of eigenvectors which compose the stiffness matrix
+    TPZFMatrix<std::complex<double> > fPhi;
+    
+    /// Inverse of the eigenvector matrix (transfers eigenvector coeficients to side shape coeficients)
+    TPZFNMatrix<100,std::complex<double> > fPhiInverse;
+    
+    /// Vector of eigenvalues of the SBFem analyis
+    TPZManVector<std::complex<double> > fEigenvalues;
+    
 public:
     
     TPZSBFemMultiphysicsElGroup() : TPZSBFemElementGroup()
