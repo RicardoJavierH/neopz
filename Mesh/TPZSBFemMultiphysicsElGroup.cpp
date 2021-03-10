@@ -139,15 +139,15 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
     }
     
     bool keepmatrix = false;
-    fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
+    fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);    
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
 {
-    InitializeElementMatrix(ek, ef);
-
     TPZElementMatrix E0, E1, E2;
     ComputeMatrices(E0, E1, E2);
+    
+    InitializeElementMatrix(ek, ef);
 
     int n = E0.fMat.Rows();
     auto dim = Mesh()->Dimension();
@@ -273,12 +273,12 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
         if(count != n-nstate) {
             DebugStop();
         }
-        int ncon = fConnectIndexes.size();
+        int ncon = fCondEl->NConnects();
         int eq=0;
         std::set<int64_t> cornercon;
         BuildCornerConnectList(cornercon);
         for (int ic=0; ic<ncon; ic++) {
-            int64_t conindex = ConnectIndex(ic);
+            int64_t conindex = fCondEl->ConnectIndex(ic);
             if (cornercon.find(conindex) != cornercon.end())
             {
                 fPhi(eq,count) = 1;
@@ -289,7 +289,7 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
                     eigvecsel(eq+1,count+1) = 1;
                 }
             }
-            eq += Connect(ic).NShape()*Connect(ic).NState();
+            eq += fCondEl->Connect(ic).NShape()*fCondEl->Connect(ic).NState();
         }
     }
     if(dim==3 && count != n)
@@ -325,6 +325,8 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
         fPhiInverse.Print("phiinv = ",out,EMathematicaInput);
         QVectors.Print("qvec = ",out,EMathematicaInput);
     }
+
+    ek.fMat.Resize(ekloc.Rows(),ekloc.Cols());
     
     TPZFMatrix<double> ekimag(ekloc.Rows(),ekloc.Cols());
     for (int i=0; i<ekloc.Rows(); i++) {
@@ -342,8 +344,10 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
             DebugStop();
         }
 #endif
-        // sbfem->SetPhiEigVal(fPhi, fEigenvalues);
+        sbfem->SetPhiEigVal(fPhi, fEigenvalues);
     }
+    ofstream sout("cmeshmultiphysics.txt");
+    Mesh()->Print(sout);
 }
 
 void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2)
@@ -365,4 +369,59 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
             E2.fMat(i,j) = ek.fMat(i+n,j+n);
         }
     }
+
+    auto ncon = fCondEl->NConnects();
+    for (auto icon = 0; icon < ncon/2; icon++)
+    {
+        auto &c = fCondEl->Connect(icon);
+        c.SetCondensed(true);
+    }
+    auto celref = fCondEl->ReferenceCompEl();
+    auto elgr = dynamic_cast<TPZElementGroup * >(celref);
+    if(!elgr)
+    {
+        DebugStop();
+    }
+    elgr->ReorderConnects();
+    Mesh()->InitializeBlock();
+    fCondEl->Resequence();
 }
+
+void TPZSBFemMultiphysicsElGroup::InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const
+{
+	const int ncon = fCondEl->NConnects();
+	int numeq = 0;
+	ef.fBlock.SetNBlocks(ncon);
+	ek.fBlock.SetNBlocks(ncon);
+    
+    for (int ic=0; ic<ncon; ic++)
+    {
+        TPZConnect &c = Connect(ic);
+        int blsize = c.NShape()*c.NState();
+        numeq += blsize;
+        ef.fBlock.Set(ic, blsize);
+        ek.fBlock.Set(ic, blsize);
+    }
+    const int numloadcases = 1;
+    ef.fMesh = Mesh();
+    ef.fType = TPZElementMatrix::EF;
+	ef.fMat.Redim(numeq,numloadcases);
+	ef.fConnect.Resize(ncon);
+
+    ek.fMesh = Mesh();
+    ek.fType = TPZElementMatrix::EK;
+	ek.fMat.Redim(numeq,numeq);
+	ek.fConnect.Resize(ncon);
+
+	for(int i=0; i<ncon; i++)
+    {
+		(ef.fConnect)[i] = ConnectIndex(i);
+		(ek.fConnect)[i] = ConnectIndex(i);
+	}
+    std::map<int64_t,TPZOneShapeRestraint>::const_iterator it;
+    for (it = fRestraints.begin(); it != fRestraints.end(); it++) 
+    {
+        ef.fOneRestraints.push_back(it->second);
+        ek.fOneRestraints.push_back(it->second);
+    }
+}//void

@@ -37,6 +37,7 @@ class TPZSBFemVolumeHdiv : public TPZInterpolationSpace
     TPZCompEl *fElementGroup = 0;
 
 	/** @brief List of pointers to computational elements */
+    // Order of the elements: fDifPressure, fInterface, fLeftFlux, fRightFlux, fAverPressure, fInterface, fSkeleton
 	TPZManVector<TPZCompEl* ,7> fElementVec;
     	
 	/** @brief Indexes of the connects of the element */
@@ -179,14 +180,13 @@ public:
 
     virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const
     {
-        if (fSkeleton == -1) {
-            DebugStop();
-        }
-        fElementVec[6]->BuildCornerConnectList(connectindexes);
-        // int ncorner = fElementVec[6]->NCornerConnects();
-        // for (int ic = 0; ic < ncorner; ic++) {
-        //     connectindexes.insert(fElementVec[6]->ConnectIndex(ic));
-        // }
+        fElementVec[4]->BuildCornerConnectList(connectindexes);
+    }
+
+    void SetPhiEigVal(TPZFMatrix<std::complex<double> > &phi, TPZManVector<std::complex<double> > &eigval)
+    {
+        fPhi = phi;
+        fEigenvalues = eigval;
     }
 
     virtual int NSideConnects(int iside) const

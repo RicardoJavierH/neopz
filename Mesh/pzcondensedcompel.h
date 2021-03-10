@@ -43,7 +43,6 @@ protected:
     TPZManVector<int64_t,10> fCondensedConnectIndexes;
     TPZManVector<int64_t,10> fActiveConnectIndexes;
     bool fKeepMatrix = true;
-    void Resequence();
 
 public:
     
@@ -62,6 +61,8 @@ public:
 
     /** @brief unwrap the condensed element from the computational element and delete the condensed element */
     void Unwrap();
+    
+    void Resequence();
     
     /**
 	 * @brief Set the index i to node inode

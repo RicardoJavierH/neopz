@@ -32,6 +32,8 @@ private:
     
     /// Vector of eigenvalues of the SBFem analyis
     TPZManVector<std::complex<double> > fEigenvalues;
+
+    TPZManVector<int64_t> fExtConnectPressure;
     
 public:
     
@@ -64,4 +66,15 @@ public:
 
 
     void ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2);
+
+
+    virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const override
+    {
+        for (auto sbfemvol : fElGroup)
+        {
+            sbfemvol->BuildCornerConnectList(connectindexes);
+        }
+    }
+
+    void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const;
 };

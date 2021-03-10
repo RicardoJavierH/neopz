@@ -738,7 +738,6 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsVol(TPZMultiphysicsCompMesh & cme
                 }
             }
         }
-        sbfem->Print(cout);
     }
 }
 
