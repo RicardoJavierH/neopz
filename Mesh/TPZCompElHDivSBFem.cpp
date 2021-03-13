@@ -98,8 +98,8 @@ void TPZCompElHDivSBFem<TSHAPE>::ComputeRequiredData(TPZMaterialData &data, TPZV
     }
     for (auto i = 0; i < nshape1d; i++)
     {
-        data.divphi(i) *= 2*data.detjac;
-        data.phi(i) *= 2*(data.detjac);
+        // data.divphi(i) *= 2*data.detjac;
+        // data.phi(i) *= 2*(data.detjac);
     }
     for (auto i = 0; i < nshape; i++)
     {
@@ -121,6 +121,7 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
 {
     // Computing the deformed directions for the 2d functions using the information of the neighbourhood
     // Inspired in TPZSBFemVolume::ComputeKMatrices
+    auto detjac1d = data.detjac;
 
     // The Reference element will be the skeleton
     TPZGeoEl *Ref1D = this->Reference();
@@ -170,23 +171,25 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     
     TPZFNMatrix<9,REAL> grad(dim2,dim2,0);
     gelvolume->GradX(xivol,grad);
-    data.detjac = sqrt(2*data.detjac);
+
+    // data.detjac = sqrt(2*data.detjac);
     
     for (auto j = 0; j < 3; j++)
     {
         for (auto i = 0; i < dim2; i++)
         {
-            data.fDeformedDirections(i,j) = fabs(data.fDeformedDirections(i,j));
+            data.fDeformedDirections(i,j) = data.jacobian(i,0)/(detjac1d);
         }
+        data.fDeformedDirections(2,j) = 0.;
     }
     for (auto j = 3; j < data.fDeformedDirections.Cols(); j++)
     {
         for (auto i = 0; i < dim2; i++)
         {
-            for (auto k = 0; k < dim2; k++)
-            {
-                data.fDeformedDirections(i,j) = 2*grad(i,k)/data.detjac;
-            }
+            // for (auto k = 0; k < dim2; k++)
+            // {
+                data.fDeformedDirections(i,j) = data.jacobian(i,1)/(detjac1d/2);
+            // }
         }
         data.fDeformedDirections(2,j) = 0.;
     }

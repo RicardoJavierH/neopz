@@ -180,7 +180,7 @@ public:
 
     virtual void BuildCornerConnectList(std::set<int64_t> &connectindexes) const
     {
-        fElementVec[4]->BuildCornerConnectList(connectindexes);
+        fElementVec[6]->BuildCornerConnectList(connectindexes);
     }
 
     void SetPhiEigVal(TPZFMatrix<std::complex<double> > &phi, TPZManVector<std::complex<double> > &eigval)

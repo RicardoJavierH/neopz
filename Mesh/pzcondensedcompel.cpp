@@ -54,7 +54,7 @@ TPZRegisterClassId(&TPZCondensedCompEl::ClassId)
     if(elgr)
     {
         for (int ic=0; ic<ncon; ic++) {
-            if(fIndexes[ic] != ic) DebugStop();
+            // if(fIndexes[ic] != ic) DebugStop();
         }
     }
 #endif

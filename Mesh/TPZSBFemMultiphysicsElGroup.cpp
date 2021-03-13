@@ -112,34 +112,48 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
             fCondensedEls->AddElement(cel);
         }
     }
-    auto ncon = fCondensedEls->NConnects();
-    for (auto icon = 0; icon < ncon; icon++)
+    
+    // Updating NElConnected()
+    // fDifPressure and fAverPressure must have NElConnected = 2, and the others = 1
     {
-        auto &c = fCondensedEls->Connect(icon);
-        c.SetCondensed(true);
-    }
-    for (auto cel : fElGroup)
-    {
-        auto sbfem = dynamic_cast <TPZSBFemVolumeHdiv*>(cel);
-        for (auto sbfemel : sbfem->ElementVec())
+        for(auto cel : fElGroup)
         {
-            auto matid = sbfemel->Reference()->MaterialId();
-            auto it = condensedmatid.find(matid);
-            if(it == condensedmatid.end())
+            auto sbfem = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+            if(!sbfem) DebugStop();
+
+            auto elvec = sbfem->ElementVec();
+
+            for (auto el : elvec)
             {
-                auto ncon = sbfemel->NConnects();
-                for (auto icon = 0; icon < ncon; icon++)
+                if ( !el || !(el->Reference()) ) DebugStop();
+            
+                auto matid = el->Reference()->MaterialId();
+                auto it = condensedmatid.find(matid);
+
+                // If it is a condensed element, NElConnected = 1
+                if (it != condensedmatid.end() && *(condensedmatid.begin()) != matid)
                 {
-                    auto &c = sbfemel->Connect(icon);
-                    c.SetCondensed(false);
-                }
+                    auto nconcel = el->NConnects();
+                    for (auto ic = 0; ic < nconcel; ic++)
+                    {
+                        el->Connect(ic).ResetElConnected();
+                        el->Connect(ic).IncrementElConnected();
+                    }
+                } 
+                // Not condensed elements are: fDifPressure and fAverPressure
             }
         }
-        
     }
-    
+
     bool keepmatrix = false;
-    fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);    
+    fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
+    fCondEl->Print(cout);
+
+    for (int64_t i = 0; i < fCondEl->NConnects()/2; i++)
+    {
+        auto &c = fCondEl->Connect(i);
+        c.SetCondensed(true);
+    }
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
@@ -229,7 +243,9 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     TPZFMatrix<complex<double> > eigenVectors;
     TPZManVector<complex<double> > eigenvalues;
     globmatkeep.SolveEigenProblem(eigenvalues, eigenVectors);
+#ifdef PZDEBUG
     cout << eigenvalues << "\n";
+#endif
     
     pthread_mutex_unlock(&mutex_serial);
         
@@ -277,7 +293,7 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
         int eq=0;
         std::set<int64_t> cornercon;
         BuildCornerConnectList(cornercon);
-        for (int ic=0; ic<ncon; ic++) {
+        for (int ic=ncon/2; ic<ncon; ic++) {
             int64_t conindex = fCondEl->ConnectIndex(ic);
             if (cornercon.find(conindex) != cornercon.end())
             {
@@ -346,14 +362,51 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
 #endif
         sbfem->SetPhiEigVal(fPhi, fEigenvalues);
     }
-    ofstream sout("cmeshmultiphysics.txt");
-    Mesh()->Print(sout);
 }
 
 void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2)
 {
+    // {
+        // auto ncon = fCondEl->NConnects();
+        // auto celref = fCondEl->ReferenceCompEl();
+        // auto elgr = dynamic_cast<TPZElementGroup * >(celref);
+        // if(!elgr)
+        // {
+        //     DebugStop();
+        // }
+        // auto nconelgr = elgr->NConnects();
+        // for (auto icon = nconelgr-2*ncon; icon < nconelgr-ncon; icon++)
+        // {
+        //     auto &c = elgr->Connect(icon);
+        //     c.SetCondensed(false);
+        // }
+        // elgr->ReorderConnects();
+        // Mesh()->InitializeBlock();
+        // fCondEl->Resequence();
+    // }
+
+
+    // {
+    //     auto ncon = fCondEl->NConnects();
+    //     for (auto icon = 0; icon < ncon/2; icon++)
+    //     {
+    //         auto &c = fCondEl->Connect(icon);
+    //         c.SetCondensed(false);
+    //     }
+    //     auto celref = fCondEl->ReferenceCompEl();
+    //     auto elgr = dynamic_cast<TPZElementGroup * >(celref);
+    //     if(!elgr)
+    //     {
+    //         DebugStop();
+    //     }
+    //     elgr->ReorderConnects();
+    //     Mesh()->InitializeBlock();
+    //     fCondEl->Resequence();
+    // }
+
     TPZElementMatrix ek(Mesh(),TPZElementMatrix::EK);
     TPZElementMatrix ef(Mesh(),TPZElementMatrix::EF);
+    fCondEl->Print(std::cout);
     fCondEl->CalcStiff(ek,ef);
     
     auto n = ek.fMat.Rows()/2;
@@ -370,21 +423,23 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
         }
     }
 
-    auto ncon = fCondEl->NConnects();
-    for (auto icon = 0; icon < ncon/2; icon++)
-    {
-        auto &c = fCondEl->Connect(icon);
-        c.SetCondensed(true);
-    }
-    auto celref = fCondEl->ReferenceCompEl();
-    auto elgr = dynamic_cast<TPZElementGroup * >(celref);
-    if(!elgr)
-    {
-        DebugStop();
-    }
-    elgr->ReorderConnects();
-    Mesh()->InitializeBlock();
-    fCondEl->Resequence();
+    // {
+    //     auto ncon = fCondEl->NConnects();
+    //     for (auto icon = 0; icon < ncon/2; icon++)
+    //     {
+    //         auto &c = fCondEl->Connect(icon);
+    //         c.SetCondensed(true);
+    //     }
+    //     auto celref = fCondEl->ReferenceCompEl();
+    //     auto elgr = dynamic_cast<TPZElementGroup * >(celref);
+    //     if(!elgr)
+    //     {
+    //         DebugStop();
+    //     }
+    //     elgr->ReorderConnects();
+    //     Mesh()->InitializeBlock();
+    //     fCondEl->Resequence();
+    // }
 }
 
 void TPZSBFemMultiphysicsElGroup::InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const

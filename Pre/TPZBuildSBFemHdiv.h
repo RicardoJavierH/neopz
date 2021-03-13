@@ -15,7 +15,7 @@ using namespace std;
 
 class TPZBuildSBFemHdiv : public TPZBuildSBFem
 {
-    int fDifPressure, fInterface, fLeftFlux, fRightFlux, fAverPressure, fBC;
+    int fDifPressure, fInternal, fLeftFlux, fRightFlux, fInterface;
 
     set<int> fCondensedMatids;
 
@@ -28,16 +28,24 @@ public:
     /// simple constructor
     TPZBuildSBFemHdiv(TPZGeoMesh * gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
-        fDifPressure = fSkeletonMatId + 1;
+        // fSkeletonMatId represents the external average pressure;
+        fInterface = fSkeletonMatId+1;
 
-        fInterface = fDifPressure +1;
+        // fRightFlux represents the external right flux (next to fSkeletonMatId)
+        fRightFlux = fInterface+1;
+
+        // fInternal will gather internal flux and pressures (next to fRightFlux)
+        fInternal = fRightFlux+1;
         
-        fLeftFlux = fInterface +1;
-        fRightFlux = fLeftFlux+1;
+        // fLeftFlux represents the external left flux (next to fInternal)
+        fLeftFlux = fInternal +1;
+
+        // fDifPressure represents the differential of the pressure (next to fLeftFlux)
+        fDifPressure = fLeftFlux + 1;
         
-        fAverPressure = fRightFlux+1;
-        
-        fCondensedMatids = {fLeftFlux, fInterface, fSkeletonMatId, fRightFlux};
+        // Order of the elements, from left to right:
+        // fDifPressure -> fInterface -> fLeftFlux -> fInternal -> fRightFlux -> fInterface -> fSkeletonMatId
+        fCondensedMatids = {fInterface, fLeftFlux, fInternal, fRightFlux};
     }
 
     int GetSideSkeletonEl(TPZGeoEl * gel);
@@ -50,7 +58,7 @@ public:
 
     void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget, set<int> & matids1d);
 
-    void CreateCompElPressure(TPZCompMesh & cmeshpressure, set<int> & matids1d);
+    void CreateCompElPressure(TPZCompMesh &cmeshpressure, set<int> & matids1d);
 
     void CreateCompElFlux(TPZCompMesh &cmeshflux, set<int> & matidtarget, set<int> & matid1d);
 
@@ -63,6 +71,10 @@ public:
     void CreateSBFEMMultiphysicsElGroups(TPZMultiphysicsCompMesh & cmeshm, set<int> & matidtarget);
 
     void GroupandCondense(TPZMultiphysicsCompMesh & cmeshm);
+
+    void StandardConfigurationHdiv();
+
+    void AddInternalElements();
 
 // NOT READY YET
     void BuildMultiphysicsCompMeshfromSkeleton(TPZCompMesh &cmesh);
