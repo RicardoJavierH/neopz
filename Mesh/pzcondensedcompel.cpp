@@ -54,7 +54,7 @@ TPZRegisterClassId(&TPZCondensedCompEl::ClassId)
     if(elgr)
     {
         for (int ic=0; ic<ncon; ic++) {
-            // if(fIndexes[ic] != ic) DebugStop();
+            if(fIndexes[ic] != ic) DebugStop();
         }
     }
 #endif
@@ -798,4 +798,29 @@ void TPZCondensedCompEl::BuildCornerConnectList(std::set<int64_t> &connectindexe
 
 int TPZCondensedCompEl::ClassId() const{
     return Hash("TPZCondensedCompEl") ^ TPZCompEl::ClassId() << 1;
+}
+
+void TPZCondensedCompEl::PermuteActiveConnects(TPZManVector<int64_t> &perm)
+{
+    auto ncon = NConnects();
+    auto nint = fNumInternalEqs;
+    for (int64_t ic = 0; ic < ncon; ic++)
+    {
+        fActiveConnectIndexes[ic] = perm[ic];
+    }
+    
+    if (fKeepMatrix == false)
+    {
+        nint = 0;
+    }
+	TPZAutoPointer<TPZMatrix<STATE> > k00 = new TPZFMatrix<STATE>(nint, nint, 0.);
+    TPZStepSolver<STATE> *step = new TPZStepSolver<STATE>(k00);
+    step->SetDirect(ELU);
+    TPZAutoPointer<TPZMatrixSolver<STATE> > autostep = step;
+    
+    fCondensed.SetSolver(autostep);
+    if(fKeepMatrix == true)
+    {
+        fCondensed.Redim(fNumTotalEqs,fNumInternalEqs);
+    }
 }

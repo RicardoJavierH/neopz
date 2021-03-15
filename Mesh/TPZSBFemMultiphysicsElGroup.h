@@ -34,6 +34,10 @@ private:
     TPZManVector<std::complex<double> > fEigenvalues;
 
     TPZManVector<int64_t> fExtConnectPressure;
+
+    int fMatIdDifPressure = -1;
+
+    int fMatIdAverPressure = -1;
     
 public:
     
@@ -74,6 +78,12 @@ public:
         {
             sbfemvol->BuildCornerConnectList(connectindexes);
         }
+    }
+
+    void SetExternalMatIds(int difpressure, int averpressure)
+    {
+        fMatIdDifPressure = difpressure;
+        fMatIdAverPressure = averpressure;
     }
 
     void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const;

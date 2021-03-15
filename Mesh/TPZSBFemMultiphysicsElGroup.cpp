@@ -147,13 +147,81 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
 
     bool keepmatrix = false;
     fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
-    fCondEl->Print(cout);
 
+    // Permuting the condensed element's connectivity
+    auto ncon = fCondEl->NConnects();
+    TPZManVector<int64_t> perm(ncon);
+
+    int posdif = 0;
+    int posaver = ncon/2;
+    for (auto cel : fElGroup)
+    {
+#ifdef PZDEBUG
+        if (!cel)
+        {
+            DebugStop();
+        }
+#endif
+        auto sbfem  = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+#ifdef PZDEBUG
+        if (!sbfem)
+        {
+            DebugStop();
+        }
+#endif
+        auto elvec = sbfem->ElementVec();
+        // for (auto celloc : sbfem->ElementVec())
+        // {
+// #ifdef PZDEBUG
+//             if (!celloc)
+//             {
+//                 DebugStop();
+//             }
+// #endif
+            // if(celloc->Reference()->MaterialId() == fMatIdDifPressure)
+            {
+                auto celloc = elvec[0];
+                auto nconlocal = celloc->NConnects();
+                for (int ic = 0; ic < nconlocal; ic++)
+                {
+                    perm[posdif+ic] = celloc->ConnectIndex(ic);
+                }
+                posdif += nconlocal;
+            }
+            // if(celloc->Reference()->MaterialId() == fMatIdAverPressure)
+            {
+                auto celloc = elvec[6];
+                auto nconlocal = celloc->NConnects();
+                for (int ic = 0; ic < nconlocal; ic++)
+                {
+                    perm[posaver+ic] = celloc->ConnectIndex(ic);
+                }
+                posaver += nconlocal;
+            }
+        // }
+    }
+    fCondEl->PermuteActiveConnects(perm);
+    
     for (int64_t i = 0; i < fCondEl->NConnects()/2; i++)
     {
         auto &c = fCondEl->Connect(i);
         c.SetCondensed(true);
     }
+
+    auto nconelgr = this->NConnects();
+    TPZManVector<int64_t> connectsids(nconelgr);
+    for (auto i = 0; i < nconelgr - ncon; i++)
+    {
+        connectsids[i] = this->ConnectIndex(i);
+    }
+    auto pos = nconelgr - ncon;
+    for (auto i = 0; i < ncon; i++)
+    {
+        connectsids[i+pos] = fCondEl->ConnectIndex(i);
+    }
+    
+    fCondensedEls->ReorderConnects(connectsids);
+    this->ReorderConnects(connectsids);
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
@@ -366,47 +434,8 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
 
 void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZElementMatrix &E1, TPZElementMatrix &E2)
 {
-    // {
-        // auto ncon = fCondEl->NConnects();
-        // auto celref = fCondEl->ReferenceCompEl();
-        // auto elgr = dynamic_cast<TPZElementGroup * >(celref);
-        // if(!elgr)
-        // {
-        //     DebugStop();
-        // }
-        // auto nconelgr = elgr->NConnects();
-        // for (auto icon = nconelgr-2*ncon; icon < nconelgr-ncon; icon++)
-        // {
-        //     auto &c = elgr->Connect(icon);
-        //     c.SetCondensed(false);
-        // }
-        // elgr->ReorderConnects();
-        // Mesh()->InitializeBlock();
-        // fCondEl->Resequence();
-    // }
-
-
-    // {
-    //     auto ncon = fCondEl->NConnects();
-    //     for (auto icon = 0; icon < ncon/2; icon++)
-    //     {
-    //         auto &c = fCondEl->Connect(icon);
-    //         c.SetCondensed(false);
-    //     }
-    //     auto celref = fCondEl->ReferenceCompEl();
-    //     auto elgr = dynamic_cast<TPZElementGroup * >(celref);
-    //     if(!elgr)
-    //     {
-    //         DebugStop();
-    //     }
-    //     elgr->ReorderConnects();
-    //     Mesh()->InitializeBlock();
-    //     fCondEl->Resequence();
-    // }
-
     TPZElementMatrix ek(Mesh(),TPZElementMatrix::EK);
     TPZElementMatrix ef(Mesh(),TPZElementMatrix::EF);
-    fCondEl->Print(std::cout);
     fCondEl->CalcStiff(ek,ef);
     
     auto n = ek.fMat.Rows()/2;

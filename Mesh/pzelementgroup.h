@@ -287,6 +287,8 @@ public:
 		return 0;
     }
     
+    void ReorderConnects(TPZManVector<int64_t> &connects);
+
     public:
 virtual int ClassId() const override;
 

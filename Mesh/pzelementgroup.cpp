@@ -397,6 +397,16 @@ void TPZElementGroup::EvaluateError(std::function<void(const TPZVec<REAL> &loc,T
     }
 }
 
+void TPZElementGroup::ReorderConnects(TPZManVector<int64_t> &connects)
+{
+    int64_t nc = connects.size();
+
+    for(int ic=0; ic<nc; ic++)
+    {
+        fConnectIndexes[ic] = connects[ic];
+    }
+}
+
 int TPZElementGroup::ClassId() const{
     return Hash("TPZElementGroup") ^ TPZCompEl::ClassId() << 1;
 }
