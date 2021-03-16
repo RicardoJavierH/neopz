@@ -178,7 +178,7 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
 //                 DebugStop();
 //             }
 // #endif
-            // if(celloc->Reference()->MaterialId() == fMatIdDifPressure)
+            // Adjusting connectivity - external pressure, dif pressure
             {
                 auto celloc = elvec[0];
                 auto nconlocal = celloc->NConnects();
@@ -188,7 +188,7 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
                 }
                 posdif += nconlocal;
             }
-            // if(celloc->Reference()->MaterialId() == fMatIdAverPressure)
+            // Adjusting connectivity - external pressure, average pressure
             {
                 auto celloc = elvec[6];
                 auto nconlocal = celloc->NConnects();
@@ -198,7 +198,6 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
                 }
                 posaver += nconlocal;
             }
-        // }
     }
     fCondEl->PermuteActiveConnects(perm);
     
@@ -324,26 +323,14 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     int count = 0;
     for (int i=0; i<2*n; i++) {
         if (eigenvalues[i].real() < -1.e-6) {
-            double maxvaleigenvec = 0;
             for (int j=0; j<n; j++) {
                 QVectors(j,count) = eigenVectors(j+n,i);
                 eigvecsel(j,count) = eigenVectors(j,i);
                 eigvecsel(j+n,count) = eigenVectors(j+n,i);
                 fPhi(j,count) = eigenVectors(j,i);
-                double realvalabs = fabs(fPhi(j,count).real());
-                if (realvalabs > maxvaleigenvec) {
-                    maxvaleigenvec = realvalabs;
-                }
             }
             eigvalsel[count] = eigenvalues[i];
             eigvalmat(0,count) = eigenvalues[i];
-            for (int j=0; j<n; j++) {
-                QVectors(j,count) /= maxvaleigenvec;
-                eigvecsel(j,count) /= maxvaleigenvec;
-                eigvecsel(j+n,count) /= maxvaleigenvec;
-                fPhi(j,count) /= maxvaleigenvec;
-
-            }
             count++;
         }
     }
@@ -452,23 +439,49 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
         }
     }
 
-    // {
-    //     auto ncon = fCondEl->NConnects();
-    //     for (auto icon = 0; icon < ncon/2; icon++)
-    //     {
-    //         auto &c = fCondEl->Connect(icon);
-    //         c.SetCondensed(true);
-    //     }
-    //     auto celref = fCondEl->ReferenceCompEl();
-    //     auto elgr = dynamic_cast<TPZElementGroup * >(celref);
-    //     if(!elgr)
-    //     {
-    //         DebugStop();
-    //     }
-    //     elgr->ReorderConnects();
-    //     Mesh()->InitializeBlock();
-    //     fCondEl->Resequence();
-    // }
+    /*
+
+    perm = Table[0, {Dimensions[E0pz][[1]]}, {Dimensions[E0pz][[2]]}];
+    For[i = 1, i <= 4, i++, perm[[i, i]] = 1];
+    For[j = 5, j <= 8, j++, 
+    If[Mod[j, 2] == 1,
+        perm[[j, j + 1]] = 1,
+        perm[[j, j - 1]] = 1
+        ];
+    ];
+
+    */
+
+    // Permuting the matrix
+    // The order of the connects should be: internal flux, internal pressure, external flux, external pressure
+    // But in the code it is: internal flux, external flux, internal pressure, external pressure
+
+    TPZFNMatrix<100,REAL> perm(n,n,0);
+    for (int i = 0; i < n/2; i++)
+    {
+        perm(i,i) = 1;
+    }
+    for (int i = n/2; i < n; i++)
+    {
+        if (i%2 == 0) {
+            perm(i,i+1) = 1;
+        } else {
+            perm(i,i-1) = 1;
+        }
+    }
+    TPZFNMatrix<100,REAL> E0copy(E0.fMat), E1copy(E1.fMat), E2copy(E2.fMat);
+    E0.fMat.Multiply(perm, E0copy);
+    E1.fMat.Multiply(perm, E1copy);
+    E2.fMat.Multiply(perm, E2copy);
+    perm.Transpose();
+    perm.Multiply(E0copy, E0.fMat);
+    perm.Multiply(E1copy, E1.fMat);
+    perm.Multiply(E2copy, E2.fMat);
+    
+    ofstream sout("CoefMatrices.txt");
+    E0.fMat.Print("E0pz = ", sout, EMathematicaInput);
+    E1.fMat.Print("E1pz = ", sout, EMathematicaInput);
+    E2.fMat.Print("E2pz = ", sout, EMathematicaInput);
 }
 
 void TPZSBFemMultiphysicsElGroup::InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const
@@ -509,3 +522,44 @@ void TPZSBFemMultiphysicsElGroup::InitializeElementMatrix(TPZElementMatrix &ek, 
         ek.fOneRestraints.push_back(it->second);
     }
 }//void
+
+void TPZSBFemMultiphysicsElGroup::LoadSolution()
+{
+    int ndofs = fPhiInverse.Cols();
+    int ncoef = fPhiInverse.Rows();
+    
+    TPZFNMatrix<100, std::complex<double> > uh_local(ncoef, fMesh->Solution().Cols(),0.);
+    fCoef.Resize(ncoef,fMesh->Solution().Cols());
+    
+    int count = 0;
+    int nc = fCondEl->NConnects();
+    for (int ic=nc/2; ic<nc; ic++)
+    {
+        TPZConnect &c = fCondEl->Connect(ic);
+        int nshape = c.NShape();
+        int nstate = c.NState();
+        int blsize = nshape*nstate;
+        int64_t seqnum = c.SequenceNumber();
+        int64_t pos = fMesh->Block().Position(seqnum);
+        for (int seq=0; seq < blsize; seq++) {
+            for (int c=0; c<uh_local.Cols(); c++)
+            {
+                uh_local(count+seq,c) = fMesh->Solution()(pos+seq,c);
+            }
+        }
+        count += blsize;
+    }
+    fPhiInverse.Multiply(uh_local, fCoef);
+
+    int64_t nel = fElGroup.size();
+    for (auto cel : fElGroup)
+    {
+        auto sbfem = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+#ifdef PZDEBUG
+        if (!sbfem) {
+            DebugStop();
+        }
+#endif
+        sbfem->LoadCoef(fCoef);
+    }
+}

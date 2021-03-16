@@ -183,32 +183,28 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     }
 #endif
 
-    auto ElementVec = cmeshm.ElementVec();
     auto nel = cmeshm.NElements();
     for (int64_t el = 0; el<nel; el++) {
         TPZCompEl *cel = cmeshm.Element(el);
+        if (!cel)
+        {
+            continue;
+        }
         auto sbfemgr = dynamic_cast<TPZSBFemMultiphysicsElGroup * >(cel);
         if (sbfemgr)
         {
             continue;
         }
-        ElementVec[el] = 0;
-    //     auto sbfemvol = dynamic_cast<TPZSBFemVolumeHdiv * >(cel);
-    //     if (sbfemvol)
-    //     {
-    //         continue;
-    //     }
-        // auto sbfemcondensed = dynamic_cast<TPZCondensedCompEl * >(cel);
-        // if (sbfemcondensed)
-        // {
-        //     ElementVec[el] = 0;
-        //     continue;
-        // }
-        
-    //     if(cel)
-    //     {
-    //         delete cel;
-    //     }
+        if (cel->Reference())
+        {
+            auto matid = cel->Reference()->MaterialId();
+            auto it = matids1d.find(matid);
+            if (it != matids1d.end())
+            {
+                continue;
+            }
+        }
+        cmeshm.ElementVec()[el] = 0;
     }
 #ifdef PZDEBUG
     ofstream sout("cmeshmultiphysics.txt");

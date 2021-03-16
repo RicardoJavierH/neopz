@@ -88,15 +88,10 @@ public:
     {
         return fSkeleton;
     }
-
-    void SetPressureIds(int64_t leftpressure, int64_t rightpressure)
+    
+    void LoadCoef(TPZFMatrix<std::complex<double> > &coef)
     {
-        DebugStop();
-    }
-
-    void SetFluxIds(int64_t leftflux, int64_t rightflux)
-    {
-        DebugStop();
+        fCoeficients = coef;
     }
 
     /** @brief Method for creating a copy of the element */

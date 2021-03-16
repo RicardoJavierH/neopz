@@ -32,12 +32,9 @@ private:
     
     /// Vector of eigenvalues of the SBFem analyis
     TPZManVector<std::complex<double> > fEigenvalues;
-
-    TPZManVector<int64_t> fExtConnectPressure;
-
-    int fMatIdDifPressure = -1;
-
-    int fMatIdAverPressure = -1;
+    
+    /// Multiplying coefficients of each eigenvector
+    TPZFMatrix<std::complex<double> > fCoef;
     
 public:
     
@@ -80,11 +77,7 @@ public:
         }
     }
 
-    void SetExternalMatIds(int difpressure, int averpressure)
-    {
-        fMatIdDifPressure = difpressure;
-        fMatIdAverPressure = averpressure;
-    }
-
     void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const;
+
+    void LoadSolution();
 };
