@@ -1,3 +1,8 @@
+# NeoPZ
+
+##WARNING 
+The NeoPZ library is in a huge refactoring process. Please check the branch RefactorGeom and its README. It will soon become the main branch.
+
 Instructions to use NeoPZ environment:
 
 I. CASE: USER
@@ -43,31 +48,31 @@ VISUALIZATION PACKAGES
 
 # obsolete
 
-InstruÁıes gerais para uso do NeoPZ:
+Instru√ß√µes gerais para uso do NeoPZ:
 
-1. Baixe o NeoPZ do CVS (se voce esta lendo isto, parabÈns! J·
+1. Baixe o NeoPZ do CVS (se voce esta lendo isto, parab√©ns! J√°
    conseguiu!).
 
-2. Sendo desenvolvedor, vocÍ vai precisar atualizar alguns arquivos de
-   configuraÁ„o. Para isso dÍ os comandos:
+2. Sendo desenvolvedor, voc√™ vai precisar atualizar alguns arquivos de
+   configura√ß√£o. Para isso d√™ os comandos:
 
    > aclocal
    > automake
    > autoconf
 
-3. Voil·! VocÍ acaba de gerar um script chamado 'configure' que gerar·
-   os makefile's automaticamente. OpÁıes do configure:
+3. Voil√°! Voc√™ acaba de gerar um script chamado 'configure' que gerar√°
+   os makefile's automaticamente. Op√ß√µes do configure:
 
-   --prefix -> com esta opÁ„o vocÍ diz aonde o NeoPZ ser· instalado;
+   --prefix -> com esta op√ß√£o voc√™ diz aonde o NeoPZ ser√° instalado;
 
-   --enable-metis -> use o MeTiS (por enquanto, use *sempre* esta opÁ„o);
+   --enable-metis -> use o MeTiS (por enquanto, use *sempre* esta op√ß√£o);
 
    --with-metis-dir -> para direcionar o compilador para o diretorio
-     onde o MeTiS est· instalado. Recomendo que vocÍ use aquele que
+     onde o MeTiS est√° instalado. Recomendo que voc√™ use aquele que
      vem com o CFDEmbraer;
 
-   --with-compilation-mode -> h· trÍs opÁıes: devel, para compilaÁ„o
-     com debug, profiling para compilaÁ„o para perfilaÁ„o e opt, para
+   --with-compilation-mode -> h√° tr√™s op√ß√µes: devel, para compila√ß√£o
+     com debug, profiling para compila√ß√£o para perfila√ß√£o e opt, para
      modo turbo (usando os mais obscuros flags do g++).
 
 Exemplos:
@@ -75,18 +80,18 @@ Exemplos:
    ./configure --prefix=/home/pos/cantao/temp/PZ --enable-metis
 
    Configura o NeoPZ para ser instalado no diretorio PZ do temp da
-   minha ·rea, com MeTiS habilitado. (Neste caso assume-se que o MeTiS
-   est· instalado em /usr/local/Metis-4.0)
+   minha √°rea, com MeTiS habilitado. (Neste caso assume-se que o MeTiS
+   est√° instalado em /usr/local/Metis-4.0)
 
    ./configure --enable-metis --with-metis-dir=/home/pos/cantao/embraer/CFDEmbraer/Metis-4.0
 
-   Idem acima, assumindo que o MeTiS est· instalado em
-   /home/pos/cantao/embraer/CFDEmbraer/Metis-4.0. O NeoPZ ser·
+   Idem acima, assumindo que o MeTiS est√° instalado em
+   /home/pos/cantao/embraer/CFDEmbraer/Metis-4.0. O NeoPZ ser√°
    instalado em /usr/local.
 
    ./configure --with-compilation-mode=opt
 
-   Tudo padr„o, com opÁıes de cÛdigo otimizado.
+   Tudo padr√£o, com op√ß√µes de c√≥digo otimizado.
 
-Futuramente esta dependÍncia do MeTiS ser· realmente opcional!
+Futuramente esta depend√™ncia do MeTiS ser√° realmente opcional!
 .
