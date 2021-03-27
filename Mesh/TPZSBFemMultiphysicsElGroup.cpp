@@ -8,6 +8,14 @@
 #include "TPZSBFemMultiphysicsElGroup.h"
 #include "TPZMultiphysicsCompMesh.h"
 #include "pzmaterialdata.h"
+#include "TPZGeoLinear.h"
+
+#ifdef LOG4CXX
+static LoggerPtr logger(Logger::getLogger("sbfemmultiphysicselgroup"));
+static LoggerPtr loggercoef(Logger::getLogger("sbfemmultiphysicscoefmatrices"));
+static LoggerPtr loggereigensystem(Logger::getLogger("sbfemmultiphysicseigensystem"));
+static LoggerPtr loggerlocalstiff(Logger::getLogger("loggerlocalstiff"));
+#endif
 
 void TPZSBFemMultiphysicsElGroup::AddElement(TPZCompEl *cel)
 {
@@ -148,79 +156,9 @@ void TPZSBFemMultiphysicsElGroup::GroupandCondense(set<int> & condensedmatid)
     bool keepmatrix = false;
     fCondEl = new TPZCondensedCompEl(fCondensedEls, keepmatrix);
 
-    // Permuting the condensed element's connectivity
-    auto ncon = fCondEl->NConnects();
-    TPZManVector<int64_t> perm(ncon);
+    AdjustConnectivities();
 
-    int posdif = 0;
-    int posaver = ncon/2;
-    for (auto cel : fElGroup)
-    {
-#ifdef PZDEBUG
-        if (!cel)
-        {
-            DebugStop();
-        }
-#endif
-        auto sbfem  = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
-#ifdef PZDEBUG
-        if (!sbfem)
-        {
-            DebugStop();
-        }
-#endif
-        auto elvec = sbfem->ElementVec();
-        // for (auto celloc : sbfem->ElementVec())
-        // {
-// #ifdef PZDEBUG
-//             if (!celloc)
-//             {
-//                 DebugStop();
-//             }
-// #endif
-            // Adjusting connectivity - external pressure, dif pressure
-            {
-                auto celloc = elvec[0];
-                auto nconlocal = celloc->NConnects();
-                for (int ic = 0; ic < nconlocal; ic++)
-                {
-                    perm[posdif+ic] = celloc->ConnectIndex(ic);
-                }
-                posdif += nconlocal;
-            }
-            // Adjusting connectivity - external pressure, average pressure
-            {
-                auto celloc = elvec[6];
-                auto nconlocal = celloc->NConnects();
-                for (int ic = 0; ic < nconlocal; ic++)
-                {
-                    perm[posaver+ic] = celloc->ConnectIndex(ic);
-                }
-                posaver += nconlocal;
-            }
-    }
-    fCondEl->PermuteActiveConnects(perm);
-    
-    for (int64_t i = 0; i < fCondEl->NConnects()/2; i++)
-    {
-        auto &c = fCondEl->Connect(i);
-        c.SetCondensed(true);
-    }
-
-    auto nconelgr = this->NConnects();
-    TPZManVector<int64_t> connectsids(nconelgr);
-    for (auto i = 0; i < nconelgr - ncon; i++)
-    {
-        connectsids[i] = this->ConnectIndex(i);
-    }
-    auto pos = nconelgr - ncon;
-    for (auto i = 0; i < ncon; i++)
-    {
-        connectsids[i+pos] = fCondEl->ConnectIndex(i);
-    }
-    
-    fCondensedEls->ReorderConnects(connectsids);
-    this->ReorderConnects(connectsids);
+    SetLocalIndices(index);
 }
 
 void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatrix &ef)
@@ -234,6 +172,7 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     auto dim = Mesh()->Dimension();
     
     TPZFMatrix<STATE> E0Inv(E0.fMat);
+    // E0.fMat.Inverse(E0Inv,ELU);
 
     TPZVec<int> pivot(E0Inv.Rows(),0);
     int nwork = 4*n*n + 2*n;
@@ -310,9 +249,6 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     TPZFMatrix<complex<double> > eigenVectors;
     TPZManVector<complex<double> > eigenvalues;
     globmatkeep.SolveEigenProblem(eigenvalues, eigenVectors);
-#ifdef PZDEBUG
-    cout << eigenvalues << "\n";
-#endif
     
     pthread_mutex_unlock(&mutex_serial);
         
@@ -370,42 +306,38 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     fEigenvalues = eigvalsel;
         
     TPZFMatrix<std::complex<double> > phicopy(fPhi);
-    fPhiInverse.Redim(n, n);
-    fPhiInverse.Identity();
-    
-    try
-    {
-        TPZVec<int> pivot;
-        phicopy.Decompose_LU(pivot);
-        phicopy.Substitution(&fPhiInverse, pivot);
-    }
-    catch(...)
-    {
-        exit(-1);
-    }
+    phicopy.Inverse(fPhiInverse,ELU);
 
     TPZFMatrix<std::complex<double> > ekloc;
     QVectors.Multiply(fPhiInverse, ekloc);
-    if(0)
-    {
-        std::ofstream out("EigenProblem.nb");
-        globmatkeep.Print("matrix = ",out,EMathematicaInput);
-        eigvecsel.Print("eigvec =",out,EMathematicaInput);
-        eigvalmat.Print("lambda =",out,EMathematicaInput);
-        fPhi.Print("phi = ",out,EMathematicaInput);
-        fPhiInverse.Print("phiinv = ",out,EMathematicaInput);
-        QVectors.Print("qvec = ",out,EMathematicaInput);
-    }
+#ifdef PZDEBUG
+    cout << eigenvalues << "\n";
+#endif
 
     ek.fMat.Resize(ekloc.Rows(),ekloc.Cols());
     
     TPZFMatrix<double> ekimag(ekloc.Rows(),ekloc.Cols());
     for (int i=0; i<ekloc.Rows(); i++) {
         for (int j=0; j<ekloc.Cols(); j++) {
-            ek.fMat(i,j) = ekloc(i,j).real();
+            ek.fMat(i,j) = -ekloc(i,j).real();
             ekimag(i,j) = ekloc(i,j).imag();
         }
     }
+
+#ifdef LOG4CXX
+    if (loggereigensystem->isDebugEnabled())
+    {
+        std::stringstream sout;
+        ek.fMat.Print("ekloc = ", sout, EMathematicaInput);
+        globmatkeep.Print("matrix = ", sout, EMathematicaInput);
+        eigvecsel.Print("eigvec =", sout, EMathematicaInput);
+        eigvalmat.Print("lambda =", sout, EMathematicaInput);
+        fPhi.Print("phi = ", sout, EMathematicaInput);
+        fPhiInverse.Print("phiinv = ", sout, EMathematicaInput);
+        QVectors.Print("qvec = ", sout, EMathematicaInput);
+        LOGPZ_DEBUG(loggereigensystem, sout.str())
+    }
+#endif
     
     for (auto cel : fElGroup)
     {
@@ -429,59 +361,33 @@ void TPZSBFemMultiphysicsElGroup::ComputeMatrices(TPZElementMatrix &E0, TPZEleme
     E0.fMat.Resize(n,n);
     E1.fMat.Resize(n,n);
     E2.fMat.Resize(n,n);
+
     for (int i = 0; i < n; i++)
     {
         for (int j = 0; j < n; j++)
         {
-            E0.fMat(i,j) = ek.fMat(i,j)*1/4;
-            E1.fMat(i,j) = ek.fMat(i+n,j)*1/2;
-            E2.fMat(i,j) = ek.fMat(i+n,j+n);
+            E0.fMat(i,j) = ek.fMat(i,j);
+            E1.fMat(i,j) = 2*ek.fMat(i+n,j);
+            E2.fMat(i,j) = 4*ek.fMat(i+n,j+n);
         }
     }
 
-    /*
-
-    perm = Table[0, {Dimensions[E0pz][[1]]}, {Dimensions[E0pz][[2]]}];
-    For[i = 1, i <= 4, i++, perm[[i, i]] = 1];
-    For[j = 5, j <= 8, j++, 
-    If[Mod[j, 2] == 1,
-        perm[[j, j + 1]] = 1,
-        perm[[j, j - 1]] = 1
-        ];
-    ];
-
-    */
-
-    // Permuting the matrix
-    // The order of the connects should be: internal flux, internal pressure, external flux, external pressure
-    // But in the code it is: internal flux, external flux, internal pressure, external pressure
-
-    TPZFNMatrix<100,REAL> perm(n,n,0);
-    for (int i = 0; i < n/2; i++)
+#ifdef LOG4CXX
+    if (logger->isDebugEnabled())
     {
-        perm(i,i) = 1;
+        std::stringstream sout;
+        fCondEl->Print(sout);
+        LOGPZ_DEBUG(logger,sout.str())
     }
-    for (int i = n/2; i < n; i++)
+    if (loggercoef->isDebugEnabled())
     {
-        if (i%2 == 0) {
-            perm(i,i+1) = 1;
-        } else {
-            perm(i,i-1) = 1;
-        }
+        std::stringstream out;
+        E0.fMat.Print("E0pz = ", out, EMathematicaInput);
+        E1.fMat.Print("E1pz = ", out, EMathematicaInput);
+        E2.fMat.Print("E2pz = ", out, EMathematicaInput);
+        LOGPZ_DEBUG(loggercoef,out.str())
     }
-    TPZFNMatrix<100,REAL> E0copy(E0.fMat), E1copy(E1.fMat), E2copy(E2.fMat);
-    E0.fMat.Multiply(perm, E0copy);
-    E1.fMat.Multiply(perm, E1copy);
-    E2.fMat.Multiply(perm, E2copy);
-    perm.Transpose();
-    perm.Multiply(E0copy, E0.fMat);
-    perm.Multiply(E1copy, E1.fMat);
-    perm.Multiply(E2copy, E2.fMat);
-    
-    ofstream sout("CoefMatrices.txt");
-    E0.fMat.Print("E0pz = ", sout, EMathematicaInput);
-    E1.fMat.Print("E1pz = ", sout, EMathematicaInput);
-    E2.fMat.Print("E2pz = ", sout, EMathematicaInput);
+#endif
 }
 
 void TPZSBFemMultiphysicsElGroup::InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const
@@ -550,6 +456,16 @@ void TPZSBFemMultiphysicsElGroup::LoadSolution()
         count += blsize;
     }
     fPhiInverse.Multiply(uh_local, fCoef);
+    
+#ifdef LOG4CXX
+    if (logger->isDebugEnabled())
+    {
+        std::stringstream sout;
+        uh_local.Print("uh = ", sout, EMathematicaInput);
+        fCoef.Print("fcoef = ", sout, EMathematicaInput);
+        LOGPZ_DEBUG(logger,sout.str())
+    }
+#endif
 
     int64_t nel = fElGroup.size();
     for (auto cel : fElGroup)
@@ -561,5 +477,143 @@ void TPZSBFemMultiphysicsElGroup::LoadSolution()
         }
 #endif
         sbfem->LoadCoef(fCoef);
+    }
+}
+
+void TPZSBFemMultiphysicsElGroup::AdjustConnectivities()
+{
+    // Permuting the condensed element's connectivity
+    auto ncon = fCondEl->NConnects();
+
+    TPZManVector<int64_t> perm(ncon);
+    int posdif = 0;
+    int posaver = ncon/2;
+    for (auto cel : fElGroup)
+    {
+        auto sbfem  = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+        auto elvec = sbfem->ElementVec();
+        // Adjusting connectivity - external pressure, dif pressure
+        {
+            auto celloc = elvec[0];
+            
+            auto gelloc = celloc->Reference();
+            TPZManVector<REAL> qsi(3,0);
+            REAL detjac;
+            TPZFMatrix<REAL> jac, axes, jacinv;
+            gelloc->Jacobian(qsi, jac, axes, detjac, jacinv);
+
+            // cout << connectindexes << endl;
+            auto nconlocal = celloc->NConnects();
+            for (int ic = 0; ic < nconlocal; ic++)
+            {
+                perm[posdif+ic] = celloc->ConnectIndex(ic);
+            }
+            posdif += nconlocal;
+        }
+        // Adjusting connectivity - external pressure, average pressure
+        {
+            auto celloc = elvec[6];
+
+            auto nconlocal = celloc->NConnects();
+            for (int ic = 0; ic < nconlocal; ic++)
+            {
+                perm[posaver+ic] = celloc->ConnectIndex(ic);
+            }
+            posaver += nconlocal;
+        }
+    }
+    fCondEl->PermuteActiveConnects(perm);
+    
+    for (int64_t i = 0; i < fCondEl->NConnects()/2; i++)
+    {
+        auto &c = fCondEl->Connect(i);
+        c.SetCondensed(true);
+    }
+
+    auto nconelgr = this->NConnects();
+    TPZManVector<int64_t> connectsids(nconelgr);
+    for (auto i = 0; i < nconelgr - ncon; i++)
+    {
+        connectsids[i] = this->ConnectIndex(i);
+    }
+    auto pos = nconelgr - ncon;
+    for (auto i = 0; i < ncon; i++)
+    {
+        connectsids[i+pos] = fCondEl->ConnectIndex(i);
+    }
+    fCondensedEls->ReorderConnects(connectsids);
+
+
+    for (auto i = 0; i < ncon/2; i++)
+    {
+        connectsids[i+ncon/2] = fCondEl->ConnectIndex(i);
+    }
+    for (auto i = ncon/2; i < ncon; i++)
+    {
+        connectsids[i-ncon/2] = fCondEl->ConnectIndex(i);
+    }
+    for (auto i = ncon; i < nconelgr; i++)
+    {
+        connectsids[i] = this->ConnectIndex(i-ncon);
+    }
+    
+    this->ReorderConnects(connectsids);
+}
+
+void TPZSBFemMultiphysicsElGroup::SetLocalIndices(int64_t index)
+{
+    int poscon = 0;
+    for (auto cel : fElGroup)
+    {
+        auto sbfem  = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
+
+        std::map<int64_t, int> globtolocal;
+        TPZCompEl *celgr = Mesh()->Element(index);
+
+        int nc = celgr->NConnects();
+        TPZManVector<int, 10> firsteq(nc + 1, 0);
+        for (int ic = 0; ic < nc; ic++)
+        {
+            globtolocal[celgr->ConnectIndex(ic)] = ic;
+            TPZConnect &c = celgr->Connect(ic);
+            firsteq[ic + 1] = firsteq[ic] + c.NShape() * c.NState();
+        }
+
+        int neq = 0;
+        auto elvec = sbfem->ElementVec();
+        TPZCompEl *celskeleton = elvec[6];
+
+        for (int ic = 0; ic < celskeleton->NConnects(); ic++)
+        {
+            TPZConnect &c = celskeleton->Connect(ic);
+            neq += c.NShape() * c.NState();
+        }
+        TPZManVector<int64_t> localindices(neq);
+
+        int count = 0;
+        for (int ic = 0; ic < celskeleton->NConnects(); ic++)
+        {
+            int64_t cindex = fCondEl->ConnectIndex(ic+poscon);
+#ifdef PZDEBUG
+            if (globtolocal.find(cindex) == globtolocal.end())
+            {
+                DebugStop();
+            }
+#endif
+            TPZConnect &c = fCondEl->Connect(ic+poscon);
+
+            int neq = c.NShape() * c.NState();
+            int locfirst = firsteq[globtolocal[cindex]];
+            for (int eq = 0; eq < neq; eq++)
+            {
+                localindices[count++] = locfirst + eq;
+            }
+        }
+
+        sbfem->SetLocalIndices(localindices);
+        poscon += celskeleton->NConnects();
+#ifdef PZDEBUG
+        if (count != neq) DebugStop();
+#endif
     }
 }

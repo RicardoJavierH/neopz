@@ -80,4 +80,24 @@ public:
     void InitializeElementMatrix(TPZElementMatrix &ek, TPZElementMatrix &ef) const;
 
     void LoadSolution();
+    
+    TPZFMatrix<std::complex<double> > &PhiInverse()
+    {
+        return fPhiInverse;
+    }
+
+    void AdjustConnectivities();
+
+    void SetLocalIndices(int64_t index);
+    
+    TPZManVector<double> EigenvaluesReal()
+    {
+        int64_t nel = fEigenvalues.NElements();
+        TPZManVector<double> eig(nel);
+        for(int64_t el=0; el<nel; el++)
+        {
+            eig[el] = fEigenvalues[el].real();
+        }
+        return eig;
+    }
 };

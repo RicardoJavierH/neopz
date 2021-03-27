@@ -96,16 +96,6 @@ void TPZCompElHDivSBFem<TSHAPE>::ComputeRequiredData(TPZMaterialData &data, TPZV
         data.divphi(i+nshape1d+nshape) = 2*data.phi(i+nshape1d);
         data.phi(i+nshape1d+nshape) = 0;
     }
-    for (auto i = 0; i < nshape1d; i++)
-    {
-        // data.divphi(i) *= 2*data.detjac;
-        // data.phi(i) *= 2*(data.detjac);
-    }
-    for (auto i = 0; i < nshape; i++)
-    {
-        // data.divphi(i) *= data.detjac;
-        // data.phi(i+nshape1d) *= 1/data.detjac;
-    }
     
     if (data.fNeedsSol)
     {
@@ -171,14 +161,12 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     
     TPZFNMatrix<9,REAL> grad(dim2,dim2,0);
     gelvolume->GradX(xivol,grad);
-
-    // data.detjac = sqrt(2*data.detjac);
     
     for (auto j = 0; j < 3; j++)
     {
         for (auto i = 0; i < dim2; i++)
         {
-            data.fDeformedDirections(i,j) = data.jacobian(i,0)/(detjac1d);
+            data.fDeformedDirections(i,j) = data.fDeformedDirections(i,0);
         }
         data.fDeformedDirections(2,j) = 0.;
     }
@@ -186,10 +174,7 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     {
         for (auto i = 0; i < dim2; i++)
         {
-            // for (auto k = 0; k < dim2; k++)
-            // {
-                data.fDeformedDirections(i,j) = data.jacobian(i,1)/(detjac1d/2);
-            // }
+            data.fDeformedDirections(i,j) = -grad(i,1)/(detjac1d/2);
         }
         data.fDeformedDirections(2,j) = 0.;
     }

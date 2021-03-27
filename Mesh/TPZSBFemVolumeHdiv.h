@@ -24,6 +24,10 @@
 #include "pzshapequad.h"
 #include "pzelchdiv.h"
 
+#include "pzgraphelq2dd.h"
+#include "pzgraphelq3dd.h"
+#include "tpzgraphelprismmapped.h"
+
 using namespace std;
 using namespace pzshape;
 
@@ -89,7 +93,7 @@ public:
         return fSkeleton;
     }
     
-    void LoadCoef(TPZFMatrix<std::complex<double> > &coef)
+    void LoadCoef(TPZFMatrix<std::complex<double>> &coef)
     {
         fCoeficients = coef;
     }
@@ -137,15 +141,32 @@ public:
         DebugStop();
     }
 
-    virtual void CreateGraphicalElement(TPZGraphMesh &grmesh, int dimension) override
+    virtual void CreateGraphicalElement(TPZGraphMesh &graphmesh, int dimension) override
     {
-        DebugStop();
+        TPZGeoEl *ref = this->Reference();
+        if (ref->Dimension() != dimension) {
+            return;
+        }
+        MElementType ty = ref->Type();
+        if (ty == EQuadrilateral) {
+            new TPZGraphElQ2dd(this, &graphmesh);
+        } else if (ty == ECube) {
+            new TPZGraphElQ3dd(this, &graphmesh);
+        } else if (ty == EPrisma) {
+            new TPZGraphElPrismMapped(this, &graphmesh);
+        } else {
+            DebugStop();
+        }
     }
 
-    virtual void Solution(TPZVec<REAL> &qsi,int var,TPZVec<STATE> &sol) override
+    virtual void Solution(TPZManVector<REAL> &qsi,int var,TPZManVector<STATE> &sol);
+
+    virtual void ComputeSolution(TPZVec<REAL> &qsi, TPZMaterialData &data)
     {
-        DebugStop();
+        ComputeSolution(qsi, data.sol, data.dsol, data.axes);
     }
+
+    virtual void ComputeSolution(TPZVec<REAL> &qsi, TPZSolVec &sol, TPZGradSolVec &dsol, TPZFMatrix<REAL> &axes);
 
     virtual void SetConnectIndex(int inode, int64_t index)
     {
@@ -180,8 +201,20 @@ public:
 
     void SetPhiEigVal(TPZFMatrix<std::complex<double> > &phi, TPZManVector<std::complex<double> > &eigval)
     {
-        fPhi = phi;
         fEigenvalues = eigval;
+        
+        int nrow = fLocalIndices.size();
+        fPhi.Resize(nrow, phi.Cols());
+        for (int i = 0; i < nrow; i++) {
+            for (int j = 0; j < phi.Cols(); j++) {
+                fPhi(i, j) = phi(fLocalIndices[i], j);
+            }
+        }
+    }
+
+    void SetLocalIndices(TPZManVector<int64_t> &localindices)
+    {
+        fLocalIndices = localindices;
     }
 
     virtual int NSideConnects(int iside) const
@@ -198,8 +231,13 @@ public:
 
     virtual int NShapeF() const
     {
-        DebugStop();
-        return 0;
+        int nc = fElementVec[6]->NConnects();
+        int nshape = 0;
+        for (int ic=0; ic<nc; ic++) {
+            TPZConnect &c = Connect(ic);
+            nshape += c.NShape();
+        }
+        return nshape;
     }
 
     virtual int NConnectShapeF(int icon, int order) const
@@ -208,10 +246,7 @@ public:
         return 0;
     }
 
-    virtual void Shape(TPZVec<REAL> &qsi,TPZFMatrix<REAL> &phi,TPZFMatrix<REAL> &dphidxi)
-    {
-        DebugStop();
-    }
+    virtual void Shape(TPZVec<REAL> &qsi,TPZFMatrix<REAL> &phi,TPZFMatrix<REAL> &dphidxi);
 
     virtual void SetPreferredOrder ( int order )
     {

@@ -123,6 +123,17 @@ static FADFADSTATE FADsqrt(FADFADSTATE x)
     return resa;
 }
 
+static FADFADSTATE FADpow(FADFADSTATE x, FADFADSTATE n)
+{
+    Fad<STATE> fadres = pow(x.val(),n.val()-REAL(1));
+    int sz = x.size();
+    FADFADSTATE resa(sz,fadres);
+    for (int i=0; i<sz; i++) {
+        resa.fastAccessDx(i) = n.val()*fadres*x.dx(i);
+    }
+    return resa;
+}
+
 static FADFADSTATE FADatan(FADFADSTATE x)
 {
     Fad<STATE> fadres = atan(x.val());
@@ -1504,6 +1515,7 @@ void TLaplaceExample1::uxy(const TPZVec<TVar> &x, TPZVec<TVar> &disp) const
             disp[0] = x[0]*a1*cos(x[0]*alpha)*cosh(x[1]*alpha) + x[1]*a1*sin(x[0]*alpha)*sinh(x[1]*alpha);
         }
             break;
+
         case ESquareRoot:
         {
             TVar r = sqrt(x[0]*x[0]+x[1]*x[1]);
@@ -1536,6 +1548,13 @@ void TLaplaceExample1::uxy(const TPZVec<TVar> &x, TPZVec<TVar> &disp) const
             //disp[0] = pow(2.,-1/4.)*sqrt(x[0] + sqrt(x[0]*x[0] + x[1]*x[1]));
         }
             break;
+
+        case EHarmonic3:
+        {
+            disp[0] = 3*pow(x[0],2)*x[1] - 3*pow(x[1],2)*x[0] + pow(x[0],3) - pow(x[1],3);
+        }
+            break;
+
 
         default:
             disp[0] = 0.;
@@ -1850,6 +1869,12 @@ void TLaplaceExample1::uxy(const TPZVec<FADFADSTATE > &x, TPZVec<FADFADSTATE > &
             }
             disp[0] = pow(2.,1/4.)*FADsqrt(r)*FADcos(theta/2);
             //disp[0] = pow(2.,-1/4.)*FADsqrt(x[0] + FADsqrt(x[0]*x[0] + x[1]*x[1]));
+        }
+            break;
+
+        case EHarmonic3:
+        {
+            disp[0] = 3*FADpow(x[0],2)*x[1] - 3*FADpow(x[1],2)*x[0] + FADpow(x[0],3) - FADpow(x[1],3);
         }
             break;
             

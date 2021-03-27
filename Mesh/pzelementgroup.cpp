@@ -401,7 +401,8 @@ void TPZElementGroup::ReorderConnects(TPZManVector<int64_t> &connects)
 {
     int64_t nc = connects.size();
 
-    for(int ic=0; ic<nc; ic++)
+    // TPZManVector<std::pair<int,int64_t>, 100 > orderedindexes(connects.size());
+    for (int ic=0; ic<nc; ic++)
     {
         fConnectIndexes[ic] = connects[ic];
     }

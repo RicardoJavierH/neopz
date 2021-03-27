@@ -363,13 +363,17 @@ void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & ma
         {
             continue;
         }
+        // if (gel->MaterialId() == fSkeletonMatId)
+        // {
+        //     TPZGeoElBC(gel, gel->NSides()-1, fSkeletonMatId);
+        // }
         // matidtarget contains the material id of the collapsed elements
         auto it = matidtarget.find(gel->MaterialId());
         if (it == matidtarget.end())
         {
             continue;
         }
-
+        
         auto idcollapsed = fElementPartition[gel->Index()];
 
         // getting the side in which the 1d elements will be constructed as neighbours
