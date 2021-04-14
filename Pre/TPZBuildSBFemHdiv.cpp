@@ -30,6 +30,8 @@
 
 #ifdef LOG4CXX
 static LoggerPtr logger(Logger::getLogger("pz.mesh.tpzbuildsbfem"));
+static LoggerPtr loggersbfemhdivgeom(Logger::getLogger("buildsbfemhdivgeom"));
+static LoggerPtr loggercmesh(Logger::getLogger("cmeshsbfemhdiv"));
 #endif
 
 // This function will create both TPZSBFemMultiphysicsVol and TPZSBFemMultiphysicsElGroup.
@@ -85,15 +87,6 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     }
     cmeshpressure->ApproxSpace().CreateDisconnectedElements(true);
     cmeshpressure->AutoBuild(matids1d);
-#ifdef PZDEBUG
-    if(1)
-    {
-        ofstream sout("cmeshpressure0.txt");
-        cmeshpressure->Print(sout);
-        ofstream gout("gmeshwithoutcollapsedels.txt");
-        fGMesh->Print(gout);
-    }
-#endif
 
     // Creating volumetric collapsed elements
     set<int> matidstarget; // matid of the collapsed element (output parameter)
@@ -101,26 +94,18 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     // But the comp mesh used must be cmeshpressure because the connectivity of the multiphysics mesh
     // hasn't been created yet.
     CreateCollapsedGeoEls(*cmeshpressure, matidstarget, matids1d);
-#ifdef PZDEBUG
-    if(1)
-    {
-        ofstream gout("gmeshwithcollapsedels.txt");
-        fGMesh->Print(gout);
-    }
-#endif
     
     cmeshm.SetReference(fGMesh);
 
     // Creating dim-1 elements: External flux and external pressure.
-    CreateExternalElements(fGMesh, matidstarget);
+    CreateExternalElements(fGMesh, matidstarget, matids1d);
 
-#ifdef PZDEBUG
+#ifdef LOG4CXX
+    if (loggersbfemhdivgeom->isDebugEnabled())
     {
-        ofstream outvtk("GeometryHybridSBFEM.vtk");
-        TPZVTKGeoMesh vtk;
-        vtk.PrintGMeshVTK(fGMesh, outvtk, true);
-        ofstream gout("GeometryHybridSBFEM.txt");
+        stringstream gout;
         fGMesh->Print(gout);
+        LOGPZ_DEBUG(loggersbfemhdivgeom,gout.str())
     }
 #endif
 
@@ -141,10 +126,12 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     cmeshm.BuildMultiphysicsSpace(active, cmeshvec);
     cmeshm.LoadReferences();
     cmeshm.CleanUpUnconnectedNodes();
+#ifdef LOG4CXX
     {
         ofstream sout("cmeshmultiphysics.txt");
         cmeshm.Print(sout);
     }
+#endif
 
 
     // Adding the interface elements
@@ -164,13 +151,7 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
     cmeshm.ExpandSolution();
     cmeshm.ComputeNodElCon();
     cmeshm.CleanUpUnconnectedNodes();
-
-#ifdef PZDEBUG
-    {
-        ofstream mout("cmeshmultiphysics.txt");
-        cmeshm.Print(mout);
-    }
-#endif
+    
     GroupandCondense(cmeshm);
     cmeshm.ExpandSolution();
     cmeshm.ComputeNodElCon();
@@ -206,13 +187,17 @@ void TPZBuildSBFemHdiv::BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh & cmes
         }
         cmeshm.ElementVec()[el] = 0;
     }
-#ifdef PZDEBUG
-    ofstream sout("cmeshmultiphysics.txt");
-    cmeshm.Print(sout);
-    ofstream fout("cmeshflux.txt");
-    cmeshflux->Print(fout);
-    ofstream pout("cmeshpressure.txt");
-    cmeshpressure->Print(pout);
+#ifdef LOG4CXX
+    if (loggercmesh->isDebugEnabled())
+    {
+        stringstream sout;
+        cmeshm.Print(sout);
+        sout << "flux\n";
+        cmeshflux->Print(sout);
+        sout << "pressure\n";
+        ofstream pout("cmeshpressure.txt");
+        cmeshpressure->Print(sout);
+    }
 #endif
 }
 
@@ -333,6 +318,19 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
                             DebugStop();
                     }
                 }
+                auto gel = fGMesh->ElementVec()[index];
+                TPZVec<REAL> qsi(3,0);
+                TPZFMatrix<REAL> jacobian, axes, jacinv;
+                REAL detjac = 0;
+                gel->JacobianXYZ(qsi, jacobian, axes, detjac, jacinv);
+                if (detjac < 0)
+                {
+                    cout << "The element " << index << " is not countclockwise\n";
+                    TPZManVector<int64_t> nodescopy(Nodes);
+                    gel->SetNodeIndex(0,Nodes[1]);
+                    gel->SetNodeIndex(1,Nodes[0]);
+                }
+                
                 if (index >= fElementPartition.size())
                 {
                     fElementPartition.resize(index+1);
@@ -341,6 +339,7 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
             }
         }
     }
+    fGMesh->ResetConnectivities();
     fGMesh->BuildConnectivity();
 
 #ifdef PZDEBUG
@@ -353,7 +352,7 @@ void TPZBuildSBFemHdiv::CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<i
 
 // The order is: fDifPressure - fFluxRight - fFluxLeft - fAverPressure - fSkeleton
 // fSkeleton is the internal flux and pressures.
-void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget)
+void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget, set<int> &matids1d)
 {
     auto nelpartitions = fElementPartition.size();
     fElementPartition.Resize(nelpartitions*6);
@@ -390,6 +389,20 @@ void TPZBuildSBFemHdiv::CreateExternalElements(TPZGeoMesh * gmesh, set<int> & ma
 
         TPZGeoElBC(gel, iside, fDifPressure);
         fElementPartition[gmesh->NElements()-1] = idcollapsed;
+        
+        TPZGeoElSide gelside(gel,iside);
+        auto gelsideskeleton = gelside.HasNeighbour(matids1d);
+
+        for (int i = 0; i < 2; i++)
+        {
+            if (gmesh->ElementVec()[gmesh->NElements()-1]->NodeIndex(0) != gelsideskeleton.Element()->NodeIndex(0))
+            {
+                cout << "Inverting direction of element " << gmesh->NElements()-1 << "\n";
+            }
+            
+            gmesh->ElementVec()[gmesh->NElements()-1]->SetNodeIndex(0,gelsideskeleton.Element()->NodeIndex(0));
+            gmesh->ElementVec()[gmesh->NElements()-1]->SetNodeIndex(1,gelsideskeleton.Element()->NodeIndex(1));
+        }
     }
 }
 
@@ -653,7 +666,7 @@ void TPZBuildSBFemHdiv::AddInterfaceElements(TPZMultiphysicsCompMesh & cmeshm, s
         {
             DebugStop();
         }
-        TPZGeoElBC gelbc(gelsidedifpr, fInterface);
+        TPZGeoElBC gelbc(gelsideleft, fInterface);
         TPZMultiphysicsInterfaceElement *intl = new TPZMultiphysicsInterfaceElement(cmeshm, gelbc.CreatedElement(),index,celsidedifpr,celsideleft);
         fElementPartition[gelbc.CreatedElement()->Index()] = fElementPartition[gelsidedifpr.Element()->Index()];
     }
@@ -952,34 +965,3 @@ void TPZBuildSBFemHdiv::CreateSBFEMMultiphysicsElGroups(TPZMultiphysicsCompMesh 
         }
     }
 }
-
-// Reorder connects: first pressure, then flux
-// void TPZBuildSBFemHdiv::Resequence(TPZSBFemMultiphysicsElGroup * sbfemgroup)
-// {
-//     map<int64_t,int64_t> fluxtopressure;
-//     const TPZVec<TPZCompEl *> &elgr = sbfemgroup->GetElGroup();
-
-//     for (auto cel : elgr)
-//     {
-//         TPZSBFemVolumeHdiv *femvol = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
-// #ifdef PZDEBUG
-//         if (!femvol)
-//         {
-//             DebugStop();
-//         }
-// #endif
-//         auto sbfemgr = femvol->ElementVec();
-//         for (auto subcel : sbfemgr)
-//         {
-//             if(subcel->Reference()->MaterialId() != fInternal) continue;
-
-//             auto ncon = subcel->NConnects();
-//             for (int ic = 0; ic < ncon; ic++)
-//             {
-//                 // fluxtopressure[subcel->ConnectIndex(ic)] =
-//             }
-            
-//         }
-        
-//     }
-// }

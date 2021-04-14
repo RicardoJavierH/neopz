@@ -103,17 +103,6 @@ void TPZSBFemVolumeHdiv::ComputeSolution(TPZVec<REAL> &qsi, TPZSolVec &sol, TPZG
         DebugStop();
     }
 #endif
-#ifdef LOG4CXX2
-    if (logger->isDebugEnabled()) {
-        TPZManVector<std::complex<double> > coefcol(fCoeficients.Rows());
-        for (int i = 0; i < fCoeficients.Rows(); i++) {
-            coefcol[i] = fCoeficients(i, 0);
-        }
-        std::stringstream sout;
-        sout << "coefficients " << coefcol << std::endl;
-        LOGPZ_DEBUG(logger, sout.str())
-    }
-#endif
 
     for (int s = 0; s < sol.size(); s++) {
         TPZManVector<std::complex<double>, 10> uh_xi(fPhi.Rows(), 0.), Duh_xi(fPhi.Rows(), 0.);
@@ -137,6 +126,16 @@ void TPZSBFemVolumeHdiv::ComputeSolution(TPZVec<REAL> &qsi, TPZSolVec &sol, TPZG
                 Duh_xi[i] += -fCoeficients(c, s)*(fEigenvalues[c] + 0.5 * (dim - 2)) * xiexpm1 * fPhi(i, c);
             }
         }
+        TPZManVector<std::complex<double>> uh_xicopy(uh_xi), Duh_xicopy(Duh_xi);
+
+        if (fElementVec[6]->Reference()->NodeIndex(0) != fElementVec[5]->Reference()->NodeIndex(0))
+        {
+            if (uh_xi.size() > 3)
+            {
+                data1d.phi(3) = -data1d.phi(3);
+            }
+        }
+        
 #ifdef LOG4CXX2
         if (s == 0 && logger->isDebugEnabled()) {
             std::stringstream sout;
@@ -146,8 +145,7 @@ void TPZSBFemVolumeHdiv::ComputeSolution(TPZVec<REAL> &qsi, TPZSolVec &sol, TPZG
             LOGPZ_DEBUG(logger, sout.str())
         }
 #endif
-        //        std::cout << "uh_xi " << uh_xi << std::endl;
-        //        std::cout << "Duh_xi " << Duh_xi << std::endl;
+        
         sol[s].Resize(nstate);
         sol[s].Fill(0.);
         TPZFNMatrix<9, STATE> dsollow(dim - 1, nstate, 0.), dsolxieta(dim, nstate, 0.);
@@ -206,7 +204,7 @@ void TPZSBFemVolumeHdiv::Shape(TPZVec<REAL> &qsi, TPZFMatrix<REAL> &phi, TPZFMat
     TPZCompMesh *cmesh = Mesh();
     TPZCompEl *celgroup = cmesh->Element(fElementGroupIndex);
     auto elgr = dynamic_cast<TPZSBFemMultiphysicsElGroup *> (celgroup);
-    TPZFMatrix<std::complex<double> > &CoefficientLoc = elgr->PhiInverse();
+    TPZFMatrix<std::complex<double>> &CoefficientLoc = elgr->PhiInverse();
 #ifdef LOG4CXX2
     if (logger->isDebugEnabled()) {
         std::stringstream sout;

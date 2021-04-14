@@ -25,17 +25,19 @@ private:
     TPZCondensedCompEl * fCondEl;
     
     /// Matrix of eigenvectors which compose the stiffness matrix
-    TPZFMatrix<std::complex<double> > fPhi;
+    TPZFMatrix<std::complex<double>> fPhi;
     
     /// Inverse of the eigenvector matrix (transfers eigenvector coeficients to side shape coeficients)
-    TPZFNMatrix<100,std::complex<double> > fPhiInverse;
+    TPZFMatrix<std::complex<double>> fPhiInverse;
     
     /// Vector of eigenvalues of the SBFem analyis
-    TPZManVector<std::complex<double> > fEigenvalues;
+    TPZManVector<std::complex<double>> fEigenvalues;
     
     /// Multiplying coefficients of each eigenvector
-    TPZFMatrix<std::complex<double> > fCoef;
+    TPZFMatrix<std::complex<double>> fCoef;
     
+    TPZManVector<int64_t> fLocalindices;
+
 public:
     
     TPZSBFemMultiphysicsElGroup() : TPZSBFemElementGroup()
@@ -81,7 +83,7 @@ public:
 
     void LoadSolution();
     
-    TPZFMatrix<std::complex<double> > &PhiInverse()
+    TPZFMatrix<std::complex<double>> &PhiInverse()
     {
         return fPhiInverse;
     }
@@ -90,14 +92,31 @@ public:
 
     void SetLocalIndices(int64_t index);
     
-    TPZManVector<double> EigenvaluesReal()
+    TPZManVector<double> EigenvaluesReal(TPZManVector<complex<double> > & eigenvalues)
     {
-        int64_t nel = fEigenvalues.NElements();
+        int64_t nel = eigenvalues.NElements();
         TPZManVector<double> eig(nel);
         for(int64_t el=0; el<nel; el++)
         {
-            eig[el] = fEigenvalues[el].real();
+            eig[el] = eigenvalues[el].real();
         }
+        return eig;
+    }
+
+    TPZFMatrix<double> EigenVectorsReal(TPZFMatrix<std::complex<double>> &eigvec)
+    {
+        auto nrows = eigvec.Rows();
+        auto ncols = eigvec.Cols();
+        TPZFMatrix<double> eig(nrows,ncols);
+
+        for (auto ir = 0; ir < nrows; ir++)
+        {
+            for (auto ic = 0; ic < ncols; ic++)
+            {
+                eig(ir,ic) = eigvec(ir,ic).real();
+            }
+        }
+        
         return eig;
     }
 };

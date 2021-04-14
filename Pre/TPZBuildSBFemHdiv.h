@@ -29,19 +29,19 @@ public:
     TPZBuildSBFemHdiv(TPZGeoMesh * gmesh, int skeletonmatid, std::map<int,int> &matidtranslation) : TPZBuildSBFem(gmesh,skeletonmatid, matidtranslation)
     {
         // fSkeletonMatId represents the external average pressure;
-        fInterface = fSkeletonMatId+1;
+        fInterface = fSkeletonMatId+1; //7 
 
         // fRightFlux represents the external right flux (next to fSkeletonMatId)
-        fRightFlux = fInterface+1;
+        fRightFlux = fInterface+1; //8
 
         // fInternal will gather internal flux and pressures (next to fRightFlux)
-        fInternal = fRightFlux+1;
+        fInternal = fRightFlux+1; //9
         
         // fLeftFlux represents the external left flux (next to fInternal)
-        fLeftFlux = fInternal +1;
+        fLeftFlux = fInternal +1; //10
 
         // fDifPressure represents the differential of the pressure (next to fLeftFlux)
-        fDifPressure = fLeftFlux + 1;
+        fDifPressure = fLeftFlux + 1; //11
         
         // Order of the elements, from left to right:
         // fDifPressure -> fInterface -> fLeftFlux -> fInternal -> fRightFlux -> fInterface -> fSkeletonMatId
@@ -54,7 +54,7 @@ public:
 
     void BuildMultiphysicsCompMesh(TPZMultiphysicsCompMesh &cmesh);
 
-    void CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget);
+    void CreateExternalElements(TPZGeoMesh * gmesh, set<int> & matidtarget, set <int> & matids1d);
 
     void CreateCollapsedGeoEls(TPZCompMesh & cmeshpressure, set<int> & matidstarget, set<int> & matids1d);
 

@@ -103,6 +103,15 @@ void TPZCompElHDivSBFem<TSHAPE>::ComputeRequiredData(TPZMaterialData &data, TPZV
         DebugStop();
         // ComputeSolution(qsi, data);
     }
+#ifdef LOG4CXX
+    if (logger->isDebugEnabled())
+    {
+        stringstream sout;
+        sout << "qsi = " << data.xParametric << endl;
+        data.phi.Print("phi = ", sout, EMathematicaInput);
+        LOGPZ_DEBUG(logger,sout.str());
+    }
+#endif
 }
 
 // This function will compute the directions for the HDiv collapsed based on the information of neighbourhood
@@ -112,6 +121,7 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     // Computing the deformed directions for the 2d functions using the information of the neighbourhood
     // Inspired in TPZSBFemVolume::ComputeKMatrices
     auto detjac1d = data.detjac;
+    auto axes1d = data.axes;
 
     // The Reference element will be the skeleton
     TPZGeoEl *Ref1D = this->Reference();
@@ -149,7 +159,7 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     }
 
     // Adjusting derivatives
-    ExtendShapeFunctions(data);
+    ExtendShapeFunctions(data, detjac1d);
 
     auto ndir = data.fDeformedDirections.Cols()-1;
 
@@ -161,22 +171,41 @@ void TPZCompElHDivSBFem<TSHAPE>::HDivCollapsedDirections(TPZMaterialData &data, 
     
     TPZFNMatrix<9,REAL> grad(dim2,dim2,0);
     gelvolume->GradX(xivol,grad);
+    REAL detjac = sqrt(2*data.detjac);
+    
+    TPZFNMatrix<9,REAL> jaccollapsed;
+    data.axes.Resize(data.jacobian.Cols(),data.jacobian.Rows());
+    data.jacobian.Multiply(data.axes,jaccollapsed);
+    TPZFMatrix<REAL> fDeformedDirectionsCopy(data.fDeformedDirections);
+
+    auto signal = 0;
+    TPZManVector<REAL,2> signalvec(2,0);
+    for (int i = 0; i < dim2; i++)
+    {
+        signal += -data.axes(1,i);
+        signalvec[0] += data.axes(0,i);
+        signalvec[1] += data.axes(1,i);
+    }
     
     for (auto j = 0; j < 3; j++)
     {
         for (auto i = 0; i < dim2; i++)
         {
-            data.fDeformedDirections(i,j) = data.fDeformedDirections(i,0);
+            // data.fDeformedDirections(i,j) = data.fDeformedDirections(i,0);
+            data.fDeformedDirections(i,j) = data.jacobian(i,0);
         }
-        data.fDeformedDirections(2,j) = 0.;
     }
     for (auto j = 3; j < data.fDeformedDirections.Cols(); j++)
     {
+        data.fDeformedDirections(2,j) = 0.;
         for (auto i = 0; i < dim2; i++)
         {
-            data.fDeformedDirections(i,j) = -grad(i,1)/(detjac1d/2);
+            for (int k = 0; k < 3; k++)
+            {
+                // data.fDeformedDirections(i,j) = signalvec[i]*fDeformedDirectionsCopy(k,j)*grad(i,1)/(detjac/2);
+                data.fDeformedDirections(i,j) = signal*fDeformedDirectionsCopy(k,j)*data.jacobian(i,1)*2;
+            }
         }
-        data.fDeformedDirections(2,j) = 0.;
     }
 }
 
@@ -231,7 +260,7 @@ void TPZCompElHDivSBFem<TSHAPE>::AdjustAxes3D(const TPZFMatrix<REAL> &axes2D, TP
 }
 
 template <class TSHAPE>
-void TPZCompElHDivSBFem<TSHAPE>::ExtendShapeFunctions(TPZMaterialData &data)
+void TPZCompElHDivSBFem<TSHAPE>::ExtendShapeFunctions(TPZMaterialData &data, REAL detjac1d)
 {
     int dim = fGelVolSide.Element()->Dimension();
 
@@ -241,12 +270,10 @@ void TPZCompElHDivSBFem<TSHAPE>::ExtendShapeFunctions(TPZMaterialData &data)
     {
         nshape1d += this->NConnectShapeF(i, this->fPreferredOrder);
     }
-    
+
     int64_t nshape2d = (nshape - nshape1d) / 2;
     for (int ish = 0; ish < nshape2d; ish++)
     {
-        data.phi(ish + nshape1d, 0) = data.phi(ish, 0);
-        data.phi(ish + nshape1d+nshape2d, 0) = data.phi(ish, 0);
         for (int d = 0; d < dim - 1; d++)
         {
             data.dphi(d, ish + nshape1d) = 0.;
@@ -255,8 +282,55 @@ void TPZCompElHDivSBFem<TSHAPE>::ExtendShapeFunctions(TPZMaterialData &data)
         data.dphi(dim-1, ish+nshape1d) = - data.phi(ish) / 2.;
         data.dphi(dim-1, ish+nshape1d+nshape2d) = 0.;
     }
+   
+    TPZFNMatrix<50,REAL> philoc(data.phi.Rows(),data.phi.Cols()),dphiloc(data.dphi.Rows(),data.dphi.Cols());
+    TPZManVector<int,TSHAPE::NSides> ord;
+    TPZCompElHDivCollapsed<TSHAPE>::fBottom.GetInterpolationOrder(ord);
+
+    int nc = this->Reference()->NCornerNodes();
+    TPZManVector<int64_t,8> id(nc);
+    for (int ic=0; ic<nc; ic++)
+    {
+        id[ic] = this->Reference()->Node(ic).Id();
+    }
+
+    TSHAPE::Shape(data.xParametric, id, ord, philoc, dphiloc);
+
+    TPZManVector<int,9> permutegather(TSHAPE::NSides);
+    int transformid = TSHAPE::GetTransformId(id);
+    TSHAPE::GetSideHDivPermutation(transformid, permutegather);
+    
+    TPZManVector<int64_t,27> FirstIndex(TSHAPE::NSides+1);
+    TPZCompElHDivCollapsed<TSHAPE>::fBottom.FirstShapeIndex(FirstIndex);
+
+    int order = TPZCompElHDivCollapsed<TSHAPE>::fBottom.Connect(0).Order();
+    for (int side=0; side < TSHAPE::NSides; side++)
+    {
+        int ifirst = FirstIndex[side];
+        int kfirst = FirstIndex[permutegather[side]];
+        int nshape = TSHAPE::NConnectShapeF(side,order);
+        for (int i=0; i<nshape; i++)
+        {
+            data.phi(nshape1d + ifirst+i,0) = philoc(kfirst+i,0)/detjac1d;
+            for (int d=0; d< TSHAPE::Dimension; d++)
+            {
+                data.dphi(d,nshape1d + ifirst+i) = dphiloc(d,kfirst+i)/detjac1d;
+            }
+        }
+    }
+    for (int i = 0; i < nshape1d; i++)
+    {
+        data.phi(i,0) *= 1/detjac1d;
+        for (int d=0; d< TSHAPE::Dimension; d++)
+        {
+            data.dphi(d,i) *= 1/detjac1d;
+        }
+    }
+    
+
     TPZInterpolationSpace::Convert2Axes(data.dphi, data.jacinv, data.dphix);
 }
+
 
 #include "pzshapetriang.h"
 #include "pzshapepoint.h"

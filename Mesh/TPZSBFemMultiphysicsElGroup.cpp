@@ -15,6 +15,8 @@ static LoggerPtr logger(Logger::getLogger("sbfemmultiphysicselgroup"));
 static LoggerPtr loggercoef(Logger::getLogger("sbfemmultiphysicscoefmatrices"));
 static LoggerPtr loggereigensystem(Logger::getLogger("sbfemmultiphysicseigensystem"));
 static LoggerPtr loggerlocalstiff(Logger::getLogger("loggerlocalstiff"));
+static LoggerPtr loggerfulleigensys(Logger::getLogger("sbfemmultiphysicsfulleigensys"));
+static LoggerPtr loggersbfemcondensed(Logger::getLogger("sbfemcondensed"));
 #endif
 
 void TPZSBFemMultiphysicsElGroup::AddElement(TPZCompEl *cel)
@@ -66,6 +68,13 @@ void TPZSBFemMultiphysicsElGroup::Print(std::ostream &out) const
         out << vol->SkeletonIndex() << " ";
     }
     out << std::endl;
+    out << "Connect indexes \n";
+    int nc = NConnects();
+    for (int ic=0; ic<nc; ic++)
+    {
+        out << ConnectIndex(ic) << " ";
+    }
+    out << std::endl;
     out << "Connect indexes of the contained elements\n";
     for (auto cel : fElGroup)
     {
@@ -76,6 +85,14 @@ void TPZSBFemMultiphysicsElGroup::Print(std::ostream &out) const
         }
         out << std::endl;
     }
+    out << "Connect indexes of the condensed element \n";
+    nc = fCondEl->NConnects();
+    for (int ic=0; ic<nc; ic++)
+    {
+        out << fCondEl->ConnectIndex(ic) << " ";
+    }
+    out << std::endl;
+    
     out << "End of " << __PRETTY_FUNCTION__ << std::endl;
 }
 
@@ -172,7 +189,6 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     auto dim = Mesh()->Dimension();
     
     TPZFMatrix<STATE> E0Inv(E0.fMat);
-    // E0.fMat.Inverse(E0Inv,ELU);
 
     TPZVec<int> pivot(E0Inv.Rows(),0);
     int nwork = 4*n*n + 2*n;
@@ -249,12 +265,21 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     TPZFMatrix<complex<double> > eigenVectors;
     TPZManVector<complex<double> > eigenvalues;
     globmatkeep.SolveEigenProblem(eigenvalues, eigenVectors);
+#ifdef LOG4CXX
+    if (loggerfulleigensys->isDebugEnabled())
+    {
+        stringstream sout;
+        EigenVectorsReal(eigenVectors).Print("eigvecfull = ", sout, EMathematicaInput);
+        EigenvaluesReal(eigenvalues).Print(sout);
+        LOGPZ_DEBUG(loggerfulleigensys, sout.str())
+    }
+#endif
     
     pthread_mutex_unlock(&mutex_serial);
         
-    TPZFNMatrix<200,std::complex<double> > QVectors(n,n,0.);
+    TPZFMatrix<std::complex<double>> QVectors(n,n,0.);
     fPhi.Resize(n, n);
-    TPZManVector<std::complex<double> > eigvalsel(n,0);
+    TPZManVector<std::complex<double>> eigvalsel(n,0);
     TPZFMatrix<std::complex<double> > eigvecsel(2*n,n,0.),eigvalmat(1,n,0.);
     int count = 0;
     for (int i=0; i<2*n; i++) {
@@ -265,7 +290,7 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
                 eigvecsel(j+n,count) = eigenVectors(j+n,i);
                 fPhi(j,count) = eigenVectors(j,i);
             }
-            eigvalsel[count] = eigenvalues[i];
+            eigvalsel[count] = eigenvalues[i].real();
             eigvalmat(0,count) = eigenvalues[i];
             count++;
         }
@@ -306,9 +331,21 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     fEigenvalues = eigvalsel;
         
     TPZFMatrix<std::complex<double> > phicopy(fPhi);
-    phicopy.Inverse(fPhiInverse,ELU);
+    fPhiInverse.Redim(n, n);
+    fPhiInverse.Identity();
+    
+    try
+    {
+        TPZVec<int> pivot;
+        phicopy.Decompose_LU(pivot);
+        phicopy.Substitution(&fPhiInverse, pivot);
+    }
+    catch(...)
+    {
+        exit(-1);
+    }
 
-    TPZFMatrix<std::complex<double> > ekloc;
+    TPZFMatrix<std::complex<double>> ekloc;
     QVectors.Multiply(fPhiInverse, ekloc);
 #ifdef PZDEBUG
     cout << eigenvalues << "\n";
@@ -319,7 +356,7 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     TPZFMatrix<double> ekimag(ekloc.Rows(),ekloc.Cols());
     for (int i=0; i<ekloc.Rows(); i++) {
         for (int j=0; j<ekloc.Cols(); j++) {
-            ek.fMat(i,j) = -ekloc(i,j).real();
+            ek.fMat(i,j) = ekloc(i,j).real();
             ekimag(i,j) = ekloc(i,j).imag();
         }
     }
@@ -328,9 +365,10 @@ void TPZSBFemMultiphysicsElGroup::CalcStiff(TPZElementMatrix &ek,TPZElementMatri
     if (loggereigensystem->isDebugEnabled())
     {
         std::stringstream sout;
+        // sout << fLocalindices << endl;
         ek.fMat.Print("ekloc = ", sout, EMathematicaInput);
-        globmatkeep.Print("matrix = ", sout, EMathematicaInput);
-        eigvecsel.Print("eigvec =", sout, EMathematicaInput);
+        // globmatkeep.Print("matrix = ", sout, EMathematicaInput);
+        // eigvecsel.Print("eigvec =", sout, EMathematicaInput);
         eigvalmat.Print("lambda =", sout, EMathematicaInput);
         fPhi.Print("phi = ", sout, EMathematicaInput);
         fPhiInverse.Print("phiinv = ", sout, EMathematicaInput);
@@ -434,7 +472,7 @@ void TPZSBFemMultiphysicsElGroup::LoadSolution()
     int ndofs = fPhiInverse.Cols();
     int ncoef = fPhiInverse.Rows();
     
-    TPZFNMatrix<100, std::complex<double> > uh_local(ncoef, fMesh->Solution().Cols(),0.);
+    TPZFNMatrix<100, std::complex<double>> uh_local(ncoef, fMesh->Solution().Cols(),0.);
     fCoef.Resize(ncoef,fMesh->Solution().Cols());
     
     int count = 0;
@@ -484,25 +522,20 @@ void TPZSBFemMultiphysicsElGroup::AdjustConnectivities()
 {
     // Permuting the condensed element's connectivity
     auto ncon = fCondEl->NConnects();
+    auto ncontot = this->NConnects();
 
-    TPZManVector<int64_t> perm(ncon);
+    TPZManVector<int64_t> perm(ncon), indexes(ncontot);
     int posdif = 0;
     int posaver = ncon/2;
+    
     for (auto cel : fElGroup)
     {
         auto sbfem  = dynamic_cast<TPZSBFemVolumeHdiv *>(cel);
         auto elvec = sbfem->ElementVec();
-        // Adjusting connectivity - external pressure, dif pressure
+        // Adjusting connectivity - external pressure, dif pressure        
         {
             auto celloc = elvec[0];
-            
-            auto gelloc = celloc->Reference();
-            TPZManVector<REAL> qsi(3,0);
-            REAL detjac;
-            TPZFMatrix<REAL> jac, axes, jacinv;
-            gelloc->Jacobian(qsi, jac, axes, detjac, jacinv);
 
-            // cout << connectindexes << endl;
             auto nconlocal = celloc->NConnects();
             for (int ic = 0; ic < nconlocal; ic++)
             {
@@ -531,8 +564,9 @@ void TPZSBFemMultiphysicsElGroup::AdjustConnectivities()
     }
 
     auto nconelgr = this->NConnects();
+    auto notcondensed = nconelgr - ncon;
     TPZManVector<int64_t> connectsids(nconelgr);
-    for (auto i = 0; i < nconelgr - ncon; i++)
+    for (auto i = 0; i < notcondensed; i++)
     {
         connectsids[i] = this->ConnectIndex(i);
     }
@@ -558,6 +592,15 @@ void TPZSBFemMultiphysicsElGroup::AdjustConnectivities()
     }
     
     this->ReorderConnects(connectsids);
+
+#ifdef LOG4CXX
+    if (loggersbfemcondensed->isDebugEnabled())
+    {
+        stringstream sout;
+        fCondEl->Print(sout);
+        LOGPZ_DEBUG(loggersbfemcondensed, sout.str());
+    }
+#endif
 }
 
 void TPZSBFemMultiphysicsElGroup::SetLocalIndices(int64_t index)
@@ -610,7 +653,20 @@ void TPZSBFemMultiphysicsElGroup::SetLocalIndices(int64_t index)
             }
         }
 
+
+        TPZManVector<int,9> permutegather(sbfem->Reference()->NSides());
+        auto gel = sbfem->Reference();
+        
+        if (sbfem->Element(6)->Reference()->NodeIndex(0) != sbfem->Element(5)->Reference()->NodeIndex(0))
+        {
+            cout << "Inverting local indices for subelement " << sbfem->Reference()->Index() << endl ;
+            TPZManVector<int64_t> localindicescopy(localindices);
+            localindices[0] = localindicescopy[1];
+            localindices[1] = localindicescopy[0];
+        }
+
         sbfem->SetLocalIndices(localindices);
+        fLocalindices = localindices;
         poscon += celskeleton->NConnects();
 #ifdef PZDEBUG
         if (count != neq) DebugStop();

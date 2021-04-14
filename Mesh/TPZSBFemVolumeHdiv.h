@@ -54,13 +54,13 @@ class TPZSBFemVolumeHdiv : public TPZInterpolationSpace
     TPZManVector<int64_t> fLocalIndices;
     
     /// Section of the phi vector associated with this volume element
-    TPZFNMatrix<30,std::complex<double> > fPhi;
+    TPZFNMatrix<30,std::complex<double>> fPhi;
     
     /// Eigenvlues associated with the internal shape functions
-    TPZManVector<std::complex<double> > fEigenvalues;
+    TPZManVector<std::complex<double>> fEigenvalues;
     
     /// Multiplier coeficients associated with the solution
-    TPZFNMatrix<30,std::complex<double> > fCoeficients;
+    TPZFNMatrix<30, std::complex<double>> fCoeficients;
 
 public:
     
@@ -199,7 +199,7 @@ public:
         fElementVec[6]->BuildCornerConnectList(connectindexes);
     }
 
-    void SetPhiEigVal(TPZFMatrix<std::complex<double> > &phi, TPZManVector<std::complex<double> > &eigval)
+    void SetPhiEigVal(TPZFMatrix<std::complex<double>> &phi, TPZManVector<std::complex<double>> &eigval)
     {
         fEigenvalues = eigval;
         
