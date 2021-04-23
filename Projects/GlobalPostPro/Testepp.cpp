@@ -22,7 +22,7 @@
 #include "TPZRefPattern.h"
 #include "tpzgeoelrefpattern.h"
 #include "pzanalysis.h"
-#include "pzstrmatrix.h"
+#include "TPZStructMatrix.h"
 #include "pzbstrmatrix.h"
 #include "pzfstrmatrix.h"
 #include "pzbndmat.h"
