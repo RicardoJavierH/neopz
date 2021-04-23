@@ -800,7 +800,7 @@ void ResolverSistema(TPZAnalysis &an, TPZCompMesh *fCmesh, bool symmetric_matrix
         an.SetSolver(direct);
     }
     else{
-        TPZBandStructMatrix bdmat(fCmesh);
+        TPZBandStructMatrix<STATE> bdmat(fCmesh);
         an.SetStructuralMatrix(bdmat);
         TPZStepSolver<STATE> direct;
         direct.SetDirect(ELU);
@@ -852,7 +852,7 @@ void SolveSistTransient(REAL deltaT, TPZMatConvectionProblem * &mymaterial, TPZC
     //StiffMatrixLoadVec(mymaterial, cmesh, an, matK, fvec);
     TPZManVector<int64_t> nonactive(0);
     FilterEquation(mymaterial, cmesh, an, true,nonactive);
-    matK = an.Solver().Matrix();
+    matK = an.MatrixSolver<STATE>().Matrix();
     fvec = an.Rhs();
     
 #ifdef PZ_LOG
@@ -1014,7 +1014,7 @@ void SolveSistTransient(REAL deltaT, TPZMatConvectionProblem * &mymaterial, TPZC
 	TPZFMatrix<STATE> fvec;
     TPZManVector<int64_t> nonactive(0);
     FilterEquation(mymaterial, cmesh, an, true,nonactive);
-    matK = an.Solver().Matrix();
+    matK = an.MatrixSolver<STATE>().Matrix();
     fvec = an.Rhs();
     
 //#ifdef PZ_LOG
@@ -1122,7 +1122,7 @@ void StiffMatrixLoadVec(TPZMatConvectionProblem *mymaterial, TPZCompMesh*cmesh, 
     
 	mymaterial->SetCurrentState();
     //TPZSkylineStructMatrix matsk(cmesh);
-    TPZBandStructMatrix matsk(cmesh);
+    TPZBandStructMatrix<STATE> matsk(cmesh);
 	an.SetStructuralMatrix(matsk);
 	TPZStepSolver<STATE> step;
 	step.SetDirect(ELU);
@@ -1130,7 +1130,7 @@ void StiffMatrixLoadVec(TPZMatConvectionProblem *mymaterial, TPZCompMesh*cmesh, 
 	an.Run();
 	
 	//matK1 = an.StructMatrix();
-    matK1 = an.Solver().Matrix();
+    matK1 = an.MatrixSolver<STATE>().Matrix();
 	fvec = an.Rhs();
 }
 
