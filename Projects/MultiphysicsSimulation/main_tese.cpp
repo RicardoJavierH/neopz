@@ -33,7 +33,7 @@
 
 #include "pzskylstrmatrix.h"
 #include "pzstepsolver.h"
-#include "pzstrmatrix.h"
+#include "TPZStructMatrix.h"
 #include "TPZFrontNonSym.h"
 #include "TPZFrontSym.h"
 #include "TPZBSpStructMatrix.h"
@@ -338,7 +338,7 @@ int main22(int argc, char *argv[])
 //            TPZAnalysis an(cmesh,false);
 //            
 //            ///Criando a estrutura da matrix
-//            TPZSkylineStructMatrix full(cmesh); //caso simetrico
+//            TPZSkylineStructMatrix<STATE> full(cmesh); //caso simetrico
 //            an.SetStructuralMatrix(full);
 //            
 //            ///Decomposicao LDLt
@@ -686,7 +686,7 @@ TPZCompMesh *MalhaCompH1(TPZGeoMesh * gmesh, int p_ordem){
 void ResolverSistema(TPZAnalysis &an, TPZCompMesh *fCmesh)
 {
 	//TPZBandStructMatrix full(fCmesh);
-	TPZSkylineStructMatrix full(fCmesh); //caso simetrico
+	TPZSkylineStructMatrix<STATE> full(fCmesh); //caso simetrico
 	an.SetStructuralMatrix(full);
 	TPZStepSolver<STATE> step;
 	step.SetDirect(ELDLt); //caso simetrico
@@ -926,7 +926,7 @@ void ErrorHDiv2(TPZCompMesh *hdivmesh, std::ostream &out)
             continue;
         }
         TPZManVector<REAL,10> elerror(10,0.);
-        cel->EvaluateError(SolSuave, elerror, 0);
+        cel->EvaluateError(elerror, 0);
         int nerr = elerror.size();
         for (int i=0; i<nerr; i++) {
             globerrors[i] += elerror[i]*elerror[i];

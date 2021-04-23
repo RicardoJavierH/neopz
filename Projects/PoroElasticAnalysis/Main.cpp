@@ -1596,7 +1596,7 @@ TPZCompMesh * ComputationalPoroelasticityMesh(TiXmlHandle ControlDoc, TPZReadGID
 #define VTK
 void SolveSist(TPZAnalysis &an, TPZCompMesh *fCmesh)
 {			
-	TPZSkylineStructMatrix full(fCmesh);
+	TPZSkylineStructMatrix<STATE> full(fCmesh);
 	an.SetStructuralMatrix(full);
 	TPZStepSolver<STATE> step;
 	step.SetDirect(ELDLt);
@@ -1802,8 +1802,8 @@ void StiffMatrixLoadVec(TPZReadGIDGrid GeometryInfo,int Nthreads, TPZVec <TPZPor
 		mymaterial[imat]->SetCurrentState();
 	}		
 	
-	//TPZFStructMatrix matsk(mphysics);
-	TPZSkylineStructMatrix matsk(mphysics);
+	//TPZFStructMatrix<STATE> matsk(mphysics);
+	TPZSkylineStructMatrix<STATE> matsk(mphysics);
 	an.SetStructuralMatrix(matsk); 
 	an.StructMatrix()->SetNumThreads(Nthreads);
 	TPZStepSolver<STATE> step; 
@@ -1939,7 +1939,7 @@ void SolveSistTransient(bool IsInitial, TPZVec < TPZFMatrix<REAL> > Events,TiXml
 						Dummymaterialist[imat]->SetCurrentState();
 					}
 					
-					TPZSkylineStructMatrix matsk(DumpMphysics);
+					TPZSkylineStructMatrix<STATE> matsk(DumpMphysics);
 					DumpAnalysis.SetStructuralMatrix(matsk);
 					DumpAnalysis.StructMatrix()->SetNumThreads(Nthreads);
 					TPZStepSolver<STATE> step;

@@ -18,7 +18,6 @@
 #include "pzcompel.h"
 #include "pzpoisson3d.h"
 #include "pzbndcond.h"
-#include "pzanalysiserror.h"
 #include "pzanalysis.h"
 #include "pzcmesh.h"
 #include "pzstepsolver.h"
@@ -344,7 +343,7 @@ int main()
 		//	ofstream file("Solutout");
     //        analysis.Solution().Print("solution", file);
 			//Resolver o sistema linear
-			 //TPZFStructMatrix str(cmesh);
+			 //TPZFStructMatrix<STATE> str(cmesh);
 			// analysis.SetStructuralMatrix(str);
 			// TPZStepSolver step;
 			// step.SetDirect(ELU);
@@ -1327,7 +1326,7 @@ void SolveLU ( TPZAnalysis &an ){
 	// tanto com LU quanto Choleski. Isso resulta em não simetrias.
 	TPZCompMesh *malha = an.Mesh();
 	//TPZFrontStructMatrix<TPZFrontNonSym> mat ( malha );// não funciona com método iterativo
-	TPZFStructMatrix mat( malha );
+	TPZFStructMatrix<STATE> mat( malha );
 	//	TPZSpStructMatrix mat( malha );
 	TPZStepSolver<STATE> solv;
 	

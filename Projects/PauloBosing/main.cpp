@@ -600,7 +600,7 @@ void CreatInterface(TPZCompMesh *cmesh){
 void ResolverSistema(TPZAnalysis &an, TPZCompMesh *fCmesh, bool symmetric_matrix)
 {
     if(symmetric_matrix ==true){
-        TPZSkylineStructMatrix skmat(fCmesh);
+        TPZSkylineStructMatrix<STATE> skmat(fCmesh);
         an.SetStructuralMatrix(skmat);
         TPZStepSolver<STATE> direct;
         direct.SetDirect(ELDLt);
