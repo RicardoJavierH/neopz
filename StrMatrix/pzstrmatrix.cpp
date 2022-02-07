@@ -42,8 +42,13 @@ static TPZLogger loggerGlobStiff("pz.strmatrix.globalstiffness");
 #endif
 
 #ifdef PZ_LOG
-static TPZLogger loggerCS("calcstiffTime");
+static TPZLogger loggerCS("calcstiffTime")
 #endif
+
+///Assemble-Calcstiff time comparisson
+//static double calcstiffTime2=0.;
+//static double assembleTime2=0.;
+
 
 #ifdef CHECKCONSISTENCY
 static TPZCheckConsistency stiffconsist("ElementStiff");
@@ -166,6 +171,8 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
     TPZAdmChunkVector<TPZCompEl *> &elementvec = fMesh->ElementVec();
 
     int64_t count = 0;
+    
+    
     for (iel = 0; iel < nelem; iel++) {
         TPZCompEl *el = elementvec[iel];
         if (!el) continue;
@@ -197,6 +204,11 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
         if(loggerCS.isDebugEnabled()){
             timer.start();}
 #endif
+        
+        ///Assemble-Calcstiff time comparisson
+//        TPZTimer timer2;
+//        timer2.start();
+        
         el->CalcStiff(ek, ef);
 #ifdef PZ_LOG
         if(loggerCS.isDebugEnabled()){
@@ -204,6 +216,11 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
         calcstiffTime += timer.seconds();
         }
 #endif
+        
+        ///Assemble-Calcstiff time comparisson
+//        timer2.stop();
+//        calcstiffTime2 += timer.seconds();
+        
         if (guiInterface) if (guiInterface->AmIKilled()) {
                 return;
             }
@@ -247,6 +264,7 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
 #endif
 
         calcstiff.stop();
+        
         assemble.start();
 
         if (!ek.HasDependency()) {
@@ -364,7 +382,7 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
         //        stiffness.Zero();
         //        rhs.Zero();
         assemble.stop();
-    }//fim for iel
+         }//fim for iel
     if (count > 1000) std::cout << std::endl;
 
 #ifdef PZ_LOG
