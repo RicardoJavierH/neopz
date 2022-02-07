@@ -3,10 +3,11 @@
 #include "pzcmesh.h"
 #include "TPZTimer.h"
 #include "pzlog.h"
-
 #ifdef USING_TBB
 
+#ifdef PZ_LOG
 static TPZLogger logger("pz.strmatrix.TPZStructMatrixTBBFlow");
+#endif
 
 static int MinPassIndex(TPZStack<int64_t> &connectlist,TPZVec<int> &elContribute, TPZVec<int> &passIndex)
 {

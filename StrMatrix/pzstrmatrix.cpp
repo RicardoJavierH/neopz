@@ -250,6 +250,7 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
 #endif
 
         calcstiff.stop();
+        /*
         assemble.start();
 
         if (!ek.HasDependency()) {
@@ -367,7 +368,7 @@ void TPZStructMatrixOR::Serial_Assemble(TPZMatrix<STATE> & stiffness, TPZFMatrix
         //        stiffness.Zero();
         //        rhs.Zero();
         assemble.stop();
-    }//fim for iel
+    */}//fim for iel
     if (count > 1000) std::cout << std::endl;
 
 #ifdef PZ_LOG
