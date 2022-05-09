@@ -50,6 +50,10 @@
 #include "tpznodesetcompute.h"             // for TPZNodesetCompute
 #include "tpzsparseblockdiagonal.h"        // for TPZSparseBlockDiagonal
 
+#ifdef USING_MKL
+#include "mkl.h"
+#endif
+
 #ifdef WIN32
 #include "pzsloan.h"                       // for TPZSloan
 #endif
@@ -379,6 +383,9 @@ void TPZAnalysis::Assemble()
 
 template<class TVar>
 void TPZAnalysis::SolveInternal(){
+#ifdef USING_MKL
+ mkl_set_num_threads(32);
+#endif
 	int64_t numeq = fCompMesh->NEquations();
 	if(fRhs.Rows() != numeq ) 
     {

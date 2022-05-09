@@ -345,6 +345,14 @@ protected:
   
   friend struct ThreadData;
 
+void setNumThreads(int nthreads){
+ fnThreads=nthreads;
+}
+
+int Getnumthreads(){
+  return fnThreads;
+}
+
 private:
   /** @brief Build a sequence solver based on the block graph and its colors */
   template <class TVar>
@@ -388,5 +396,7 @@ TPZMatrixSolver<STATE> *TPZAnalysis::BuildPreconditioner<STATE>(
     EPrecond preconditioner,bool overlap);
 extern template
 TPZMatrixSolver<STATE> &TPZAnalysis::MatrixSolver<STATE>();
+
+int fnThreads = -1;
 
 #endif
